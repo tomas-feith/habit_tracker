@@ -18,8 +18,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -64,11 +64,11 @@ class HomeViewModel(private val repository: HabitRepository) : ViewModel() {
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<HomeUiState> = today
         .flatMapLatest { day ->
-            // A year back covers the detail screen's heatmap without a second query.
-            combine(
-                repository.observeHabitsWithEntries(day.minusYears(1)),
-                MutableStateFlow(day),
-            ) { pairs, d -> buildState(pairs, d) }
+            // All of it, not a trailing window: lifetime stats are computed from
+            // habit.createdOn, so a windowed query would invent misses for any habit
+            // older than the window. A personal tracker's entry table stays tiny.
+            repository.observeHabitsWithEntries(LocalDate.EPOCH)
+                .map { pairs -> buildState(pairs, day) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

@@ -248,6 +248,31 @@ class HabitEvaluatorTest {
     }
 
     @Test
+    fun `an allowance of one tolerates one, unlike a daily negative habit`() {
+        // "Eat out at most once a week" must not mean "never eat out".
+        val h = habit(polarity = Polarity.NEGATIVE, cadence = Cadence.TimesPerWeek(1))
+        val lastMonday = HabitEvaluator.weekStart(today).minusWeeks(1)
+
+        assertEquals(
+            CellState.DONE,
+            cellOn(HabitEvaluator.cells(h, entries(lastMonday), start, today), lastMonday),
+        )
+
+        val twice = entries(lastMonday) + listOf(Entry(1, lastMonday.plusDays(3), 1))
+        assertEquals(
+            CellState.MISSED_ONCE,
+            cellOn(HabitEvaluator.cells(h, twice, start, today), lastMonday),
+        )
+    }
+
+    @Test
+    fun `a daily negative habit still tolerates nothing`() {
+        val h = habit(polarity = Polarity.NEGATIVE)
+        val cells = HabitEvaluator.cells(h, entries(today.minusDays(2)), start, today)
+        assertEquals(CellState.MISSED_ONCE, cellOn(cells, today.minusDays(2)))
+    }
+
+    @Test
     fun `weekly streaks are counted in weeks`() {
         val h = habit(cadence = Cadence.TimesPerWeek(1))
         val thisMonday = HabitEvaluator.weekStart(today)

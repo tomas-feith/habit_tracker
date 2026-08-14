@@ -65,11 +65,9 @@ object Reminders {
             .cancel(pendingIntent(context, habitId))
     }
 
-    fun rescheduleAll(context: Context) {
+    suspend fun rescheduleAll(context: Context) {
         val app = context.applicationContext as HabitApplication
-        CoroutineScope(Dispatchers.IO).launch {
-            app.repository.habitsWithReminders().forEach { schedule(context, it) }
-        }
+        app.repository.habitsWithReminders().forEach { schedule(context, it) }
     }
 
     private fun pendingIntent(context: Context, habitId: Long): PendingIntent {
@@ -130,8 +128,17 @@ class ReminderReceiver : BroadcastReceiver() {
 /** Alarms don't survive a reboot, so put them back. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            Reminders.rescheduleAll(context)
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+
+        // goAsync keeps the process alive past onReceive; without it the reschedule
+        // races the system tearing the process down and the alarms stay lost.
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Reminders.rescheduleAll(context)
+            } finally {
+                pending.finish()
+            }
         }
     }
 }
