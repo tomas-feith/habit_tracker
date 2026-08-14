@@ -140,8 +140,9 @@ object HabitEvaluator {
             val scheduled = isScheduled(habit, date)
             val status = when {
                 !scheduled -> PeriodStatus.NOT_SCHEDULED
-                date == today -> settleOpen(habit.polarity, count, target = 1)
-                else -> settleClosed(habit.polarity, count, target = 1)
+                // A daily habit must be done once, and tolerates no slips at all.
+                date == today -> settleOpen(habit.polarity, count, floor = 1, allowance = 0)
+                else -> settleClosed(habit.polarity, count, floor = 1, allowance = 0)
             }
             out += Period(date, status, count)
             date = date.plusDays(1)
@@ -164,8 +165,12 @@ object HabitEvaluator {
             val status = when {
                 // Only judge weeks the habit actually existed for.
                 week.plusDays(6) < habit.createdOn -> PeriodStatus.NOT_SCHEDULED
-                week == currentWeek -> settleOpen(habit.polarity, total, cadence.target)
-                else -> settleClosed(habit.polarity, total, cadence.target)
+                // A weekly target is a floor for positive habits and an allowance for
+                // negative ones - "at least 3x" versus "at most 2x".
+                week == currentWeek ->
+                    settleOpen(habit.polarity, total, cadence.target, cadence.target)
+                else ->
+                    settleClosed(habit.polarity, total, cadence.target, cadence.target)
             }
             out += Period(week, status, total)
             week = week.plusWeeks(1)
@@ -174,29 +179,37 @@ object HabitEvaluator {
     }
 
     /**
-     * A closed period. For a positive habit the target is a floor (do it at least N
-     * times); for a negative habit it is an allowance (slip at most N times, and the
-     * default allowance of a plain negative habit is zero).
+     * A closed period.
+     *
+     * [floor] is what a positive habit must reach; [allowance] is what a negative habit
+     * must stay within. They are passed separately on purpose: a daily habit has a floor
+     * of 1 and an allowance of 0, whereas a weekly habit's target is both. Deriving one
+     * from the other would make "at most once a week" mean "never".
      */
-    private fun settleClosed(polarity: Polarity, count: Int, target: Int): PeriodStatus =
-        when (polarity) {
-            Polarity.POSITIVE -> if (count >= target) PeriodStatus.GOOD else PeriodStatus.MISSED
-            Polarity.NEGATIVE -> if (count <= allowance(target)) PeriodStatus.GOOD else PeriodStatus.MISSED
-        }
+    private fun settleClosed(
+        polarity: Polarity,
+        count: Int,
+        floor: Int,
+        allowance: Int,
+    ): PeriodStatus = when (polarity) {
+        Polarity.POSITIVE -> if (count >= floor) PeriodStatus.GOOD else PeriodStatus.MISSED
+        Polarity.NEGATIVE -> if (count <= allowance) PeriodStatus.GOOD else PeriodStatus.MISSED
+    }
 
     /**
      * An open period, which settles early only when the outcome is already determined:
-     * a positive habit you have already completed is solid now, and a slip on a negative
-     * habit is a slip now. Anything else stays open.
+     * a positive habit you have already completed is solid now, and a slip past a
+     * negative habit's allowance is a miss now. Anything else stays open.
      */
-    private fun settleOpen(polarity: Polarity, count: Int, target: Int): PeriodStatus =
-        when (polarity) {
-            Polarity.POSITIVE -> if (count >= target) PeriodStatus.GOOD else PeriodStatus.PENDING
-            Polarity.NEGATIVE -> if (count > allowance(target)) PeriodStatus.MISSED else PeriodStatus.PENDING
-        }
-
-    /** A daily negative habit tolerates nothing; a weekly one tolerates its target. */
-    private fun allowance(target: Int) = if (target <= 1) 0 else target
+    private fun settleOpen(
+        polarity: Polarity,
+        count: Int,
+        floor: Int,
+        allowance: Int,
+    ): PeriodStatus = when (polarity) {
+        Polarity.POSITIVE -> if (count >= floor) PeriodStatus.GOOD else PeriodStatus.PENDING
+        Polarity.NEGATIVE -> if (count > allowance) PeriodStatus.MISSED else PeriodStatus.PENDING
+    }
 
     private fun isScheduled(habit: Habit, date: LocalDate): Boolean {
         if (date < habit.createdOn) return false
