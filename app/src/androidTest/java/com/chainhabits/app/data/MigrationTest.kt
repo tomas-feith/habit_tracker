@@ -41,9 +41,8 @@ class MigrationTest {
     /**
      * Opening at the current version must succeed and leave a usable schema.
      *
-     * At version 1 there is nothing to migrate, so this is the meaningful assertion:
-     * it proves the exported schema JSON exists and matches the entities. Without the
-     * export, every future migration test would have nothing to diff against.
+     * Proves the exported schema JSON exists and matches the entities. Without the export,
+     * every migration test would have nothing to diff against.
      */
     @Test
     @Throws(IOException::class)
@@ -51,6 +50,54 @@ class MigrationTest {
         helper.createDatabase(TEST_DB, HabitDatabase.VERSION).use { db ->
             assertTrue("habits table missing", db.hasTable("habits"))
             assertTrue("entries table missing", db.hasTable("entries"))
+            assertTrue("pauses table missing", db.hasTable("pauses"))
+        }
+    }
+
+    /**
+     * Adding `pauses` must not disturb what is already there.
+     *
+     * The database holds the only copy of the user's history and destructive fallback is
+     * disabled, so the real risk in an additive migration is not that the new table is
+     * missing - it is that the existing rows are damaged on the way past. This writes a
+     * habit and an entry at version 1, migrates, and reads them back.
+     */
+    @Test
+    @Throws(IOException::class)
+    fun migrate1To2KeepsExistingData() {
+        helper.createDatabase(TEST_DB, 1).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO habits
+                    (id, name, polarity, strictness, cadenceType, cadenceDays,
+                     cadenceTarget, reminder_minute_of_day, createdOn, archivedOn, sortOrder)
+                VALUES (1, 'Read', 'POSITIVE', 'STANDARD', 'DAILY', 0, 1, NULL, 20000, NULL, 0)
+                """.trimIndent(),
+            )
+            db.execSQL("INSERT INTO entries (habitId, date, count) VALUES (1, 20001, 2)")
+        }
+
+        val db =
+            helper.runMigrationsAndValidate(
+                TEST_DB,
+                2,
+                true,
+                *HabitDatabase.MIGRATIONS.toTypedArray(),
+            )
+
+        db.use {
+            it.query("SELECT name FROM habits WHERE id = 1").use { cursor ->
+                assertTrue("habit row lost in migration", cursor.moveToFirst())
+                assertEquals("Read", cursor.getString(0))
+            }
+            it.query("SELECT count FROM entries WHERE habitId = 1 AND date = 20001").use { cursor ->
+                assertTrue("entry row lost in migration", cursor.moveToFirst())
+                assertEquals(2, cursor.getInt(0))
+            }
+            it.query("SELECT COUNT(*) FROM pauses").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("a fresh pauses table must start empty", 0, cursor.getInt(0))
+            }
         }
     }
 

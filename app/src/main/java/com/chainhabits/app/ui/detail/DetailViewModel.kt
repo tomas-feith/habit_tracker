@@ -40,11 +40,13 @@ data class DetailUiState(
     /** Period-level cells, matching the home screen's language. */
     val periodCells: List<Cell> = emptyList(),
     val months: List<MonthBar> = emptyList(),
+    /** True while a pause is running. */
+    val isPaused: Boolean = false,
 )
 
 class DetailViewModel(
     private val repository: HabitRepository,
-    habitId: Long,
+    private val habitId: Long,
 ) : ViewModel() {
     /** Bumped on resume so a screen left open past midnight rolls over. */
     private val today = MutableStateFlow(LocalDate.now())
@@ -53,19 +55,30 @@ class DetailViewModel(
         combine(
             repository.observeHabit(habitId),
             repository.observeEntriesFor(habitId),
+            repository.observePausesFor(habitId),
             today,
-        ) { habit, entries, day ->
+        ) { habit, entries, pauses, day ->
             if (habit == null) return@combine DetailUiState()
 
-            val timeline = HabitEvaluator.timeline(habit, entries, day)
+            val timeline = HabitEvaluator.timeline(habit, entries, day, pauses)
             DetailUiState(
                 habit = habit,
                 stats = timeline.stats,
                 yearCells = timeline.dayCellsSince(day.minusDays(YEAR_OF_DAYS)),
                 periodCells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
                 months = monthlyRates(timeline, day),
+                isPaused = pauses.any { it.isOpenEnded },
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), DetailUiState())
+
+    fun setPaused(paused: Boolean) =
+        viewModelScope.launch {
+            if (paused) {
+                repository.pauseHabit(habitId, today.value)
+            } else {
+                repository.resumeHabit(habitId, today.value)
+            }
+        }
 
     fun refreshDate() {
         today.value = LocalDate.now()

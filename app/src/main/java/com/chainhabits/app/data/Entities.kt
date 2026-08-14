@@ -7,6 +7,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Habit
+import com.chainhabits.app.domain.Pause
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
 import java.time.DayOfWeek
@@ -58,6 +59,36 @@ data class EntryEntity(
     val date: LocalDate,
     val count: Int,
 )
+
+/**
+ * A suspended stretch for one habit. [end] is null while the pause is still running.
+ *
+ * Rows are kept after a pause finishes: they are what makes last summer's holiday still
+ * render as dashes instead of quietly becoming a run of misses.
+ */
+@Entity(
+    tableName = "pauses",
+    foreignKeys = [
+        ForeignKey(
+            entity = HabitEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["habitId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("habitId")],
+)
+data class PauseEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val habitId: Long,
+    val start: LocalDate,
+    val end: LocalDate?,
+)
+
+fun PauseEntity.toDomain(): Pause = Pause(id = id, habitId = habitId, start = start, end = end)
+
+fun Pause.toEntity(): PauseEntity =
+    PauseEntity(id = id, habitId = habitId, start = start, end = end)
 
 fun HabitEntity.toDomain(): Habit =
     Habit(

@@ -82,6 +82,37 @@ data class Entry(
     val count: Int,
 )
 
+/**
+ * A stretch where a habit is deliberately suspended.
+ *
+ * Paused periods settle as [PeriodStatus.NOT_SCHEDULED], which already carries no judgement:
+ * they neither count as misses nor break a chain, and the chain simply continues across the
+ * gap. That is the whole point - a week of holiday is not a week of failure, and a tracker
+ * that treats it as one is a tracker people quit.
+ *
+ * Pauses are kept as history rather than as two columns on the habit, because clearing them
+ * when a pause ends would retroactively turn those days back into misses and could break a
+ * chain that was never actually broken.
+ */
+data class Pause(
+    val id: Long = 0,
+    val habitId: Long,
+    val start: LocalDate,
+    /** Null while the pause is still running - "paused until I say otherwise". */
+    val end: LocalDate? = null,
+) {
+    val isOpenEnded: Boolean get() = end == null
+
+    fun covers(date: LocalDate): Boolean =
+        !date.isBefore(start) && (end == null || !date.isAfter(end))
+
+    /** True when the pause touches any day in [from]..[to] inclusive. */
+    fun overlaps(
+        from: LocalDate,
+        to: LocalDate,
+    ): Boolean = !start.isAfter(to) && (end == null || !end.isBefore(from))
+}
+
 /** Whether a single settled period met its bar. */
 enum class PeriodStatus {
     GOOD,

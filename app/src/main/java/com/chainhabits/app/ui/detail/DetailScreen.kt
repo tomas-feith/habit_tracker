@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PauseCircleOutline
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +74,20 @@ fun DetailScreen(
                     }
                 },
                 actions = {
+                    // Pausing lives here rather than on the home row: the home row's
+                    // long-press is already the drag handle, and suspending a habit is a
+                    // deliberate act that deserves a deliberate place.
+                    IconButton(onClick = { viewModel.setPaused(!state.isPaused) }) {
+                        Icon(
+                            if (state.isPaused) {
+                                Icons.Default.PlayCircleOutline
+                            } else {
+                                Icons.Default.PauseCircleOutline
+                            },
+                            contentDescription =
+                                if (state.isPaused) "Resume habit" else "Pause habit",
+                        )
+                    }
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit habit")
                     }

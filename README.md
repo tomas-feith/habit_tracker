@@ -71,6 +71,31 @@ trend. Those lead with a days-since counter, since that number is the whole poin
 - **`chainLength`** — periods back to where the chain actually *broke*, surviving isolated
   misses. The headline for standard habits.
 
+## Pausing
+
+Holidays, illness and injuries are not failures, and a tracker that scores them as failures
+is a tracker people abandon. Any habit can be paused, and the top bar has a one-tap "pause
+everything" for the case that motivates it — a vacation hits every habit at once, and pausing
+them one by one is exactly the friction that makes people skip it and eat the misses instead.
+
+A paused period settles as `NOT_SCHEDULED`, which already carries no judgement: it neither
+counts as a miss nor breaks a chain, and the chain continues straight across the gap. The
+streak is not inflated either — paused periods are dropped from the count rather than
+credited, so a fortnight away neither costs you the chain nor pretends you kept it.
+
+Two asymmetries are deliberate:
+
+- **Work actually done during a pause still counts.** A workout you managed on holiday earns
+  its mark. Pausing suspends the habit; it never confiscates a period you already earned.
+- **A negative habit gets no free credit.** An untouched day on a negative habit is normally
+  a success, so applying the ordinary rule would hand out a spotless streak for every day of
+  a pause. A pause suspends a habit; it does not perform it.
+
+Pauses are stored as a history of `(habit, start, end)` rather than two columns on the habit.
+Clearing them when a pause ended would retroactively turn those days back into misses and
+could break a chain that was never actually broken — last summer's holiday has to keep
+rendering as dashes forever.
+
 ## Cell states
 
 | State | Drawn as | Meaning |
@@ -166,6 +191,10 @@ To change the schema:
 1. Edit the entities and bump `HabitDatabase.VERSION`.
 2. Add a `Migration(n, n + 1)` to `HabitDatabase.MIGRATIONS` with the SQL.
 3. `MigrationTest` fails until the committed schema JSONs and the SQL agree.
+
+Write the test to assert that *existing rows survive*, not merely that the new column or
+table exists. The real risk in an additive migration is damage in passing, and there is no
+server to re-sync from if it happens.
 
 The exported schemas under `app/schemas` are committed precisely so the migration test has
 something to diff against. Do not delete them.

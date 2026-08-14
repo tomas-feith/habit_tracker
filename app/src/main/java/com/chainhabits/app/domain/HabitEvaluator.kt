@@ -51,21 +51,42 @@ object HabitEvaluator {
         habit: Habit,
         entries: List<Entry>,
         today: LocalDate,
+        pauses: List<Pause> = emptyList(),
     ): Timeline {
         val counts = entries.groupBy { it.date }.mapValues { (_, v) -> v.sumOf { it.count } }
+        val paused = Paused(pauses)
 
         val periods =
             when (val cadence = habit.cadence) {
-                is Cadence.TimesPerWeek -> weeklyPeriods(habit, cadence, counts, today)
-                else -> dailyPeriods(habit, counts, today)
+                is Cadence.TimesPerWeek -> weeklyPeriods(habit, cadence, counts, today, paused)
+                else -> dailyPeriods(habit, counts, today, paused)
             }
         val cells = applyStrictness(habit, periods)
 
         return Timeline(
             habit = habit,
             cells = cells,
+            // Pauses need no special handling here: an unlogged day already renders as
+            // unscheduled, and a workout you did manage on holiday still deserves its mark.
             dayCells = if (habit.isWeekly) dayLevelCells(habit, counts, today) else cells,
         )
+    }
+
+    /**
+     * The paused stretches for one habit, as a question you can ask about a date.
+     *
+     * Wrapped rather than passed around as a raw list so the "is this paused" rule lives in
+     * one place, and so an empty list costs nothing.
+     */
+    private class Paused(
+        private val pauses: List<Pause>,
+    ) {
+        fun on(date: LocalDate): Boolean = pauses.any { it.covers(date) }
+
+        fun during(
+            from: LocalDate,
+            to: LocalDate,
+        ): Boolean = pauses.any { it.overlaps(from, to) }
     }
 
     /** Where the home screen's inline strip starts: 4 weeks of days, or 12 weeks. */
@@ -89,6 +110,7 @@ object HabitEvaluator {
         habit: Habit,
         counts: Map<LocalDate, Int>,
         today: LocalDate,
+        paused: Paused,
     ): List<Period> {
         val out = mutableListOf<Period>()
         var date = habit.createdOn
@@ -96,6 +118,11 @@ object HabitEvaluator {
             val count = counts[date] ?: 0
             val status =
                 when {
+                    // A paused day carries no judgement, so the chain runs straight through
+                    // it rather than being broken by a holiday - but work actually done is
+                    // still credited, so pausing never confiscates a day you earned.
+                    paused.on(date) -> pausedStatus(habit.polarity, count, floor = 1)
+
                     !isScheduled(habit, date) -> PeriodStatus.NOT_SCHEDULED
 
                     // A daily habit must be done once, and tolerates no slips at all.
@@ -114,12 +141,14 @@ object HabitEvaluator {
         cadence: Cadence.TimesPerWeek,
         counts: Map<LocalDate, Int>,
         today: LocalDate,
+        paused: Paused,
     ): List<Period> {
         val currentWeek = weekStart(today)
         val out = mutableListOf<Period>()
         var week = weekStart(habit.createdOn)
 
         while (!week.isAfter(currentWeek)) {
+            val lastDay = week.plusDays((DAYS_PER_WEEK - 1).toLong())
             val total =
                 (0 until DAYS_PER_WEEK).sumOf { counts[week.plusDays(it.toLong())] ?: 0 }
             val target = cadence.target
@@ -128,6 +157,12 @@ object HabitEvaluator {
                 when {
                     week == currentWeek -> {
                         settleOpen(habit.polarity, total, target, target)
+                    }
+
+                    // A paused week is not judged, but a quota genuinely met during it
+                    // still counts.
+                    paused.during(week, lastDay) -> {
+                        pausedStatus(habit.polarity, total, floor = target)
                     }
 
                     // A habit created on a Thursday only had part of that week available, so
@@ -152,6 +187,26 @@ object HabitEvaluator {
         }
         return out
     }
+
+    /**
+     * How a paused period settles.
+     *
+     * Credit is given only for something actually done, never merely for time passing.
+     * That asymmetry is deliberate and the reason this is not [settleClosed]: for a
+     * negative habit an untouched period is normally a success, so reusing the ordinary
+     * rule would hand out a free clean streak for every day of a pause - which is the
+     * opposite of what pausing means. A pause suspends the habit; it does not perform it.
+     */
+    private fun pausedStatus(
+        polarity: Polarity,
+        count: Int,
+        floor: Int,
+    ): PeriodStatus =
+        if (polarity == Polarity.POSITIVE && count >= floor) {
+            PeriodStatus.GOOD
+        } else {
+            PeriodStatus.NOT_SCHEDULED
+        }
 
     /** True when the habit was created or archived partway through [week]. */
     private fun isPartialWeek(

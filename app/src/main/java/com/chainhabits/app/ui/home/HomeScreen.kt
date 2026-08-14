@@ -26,12 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PauseCircleOutline
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -101,6 +104,25 @@ fun HomeScreen(
                     Text("Today", style = MaterialTheme.typography.headlineLarge)
                 },
                 actions = {
+                    if (state.rows.isNotEmpty()) {
+                        // The holiday switch. Pausing everything one habit at a time is
+                        // exactly the friction that makes people skip it and eat the misses.
+                        IconButton(onClick = { viewModel.setAllPaused(!state.allPaused) }) {
+                            Icon(
+                                if (state.allPaused) {
+                                    Icons.Default.PlayCircleOutline
+                                } else {
+                                    Icons.Default.PauseCircleOutline
+                                },
+                                contentDescription =
+                                    if (state.allPaused) {
+                                        "Resume all habits"
+                                    } else {
+                                        "Pause all habits"
+                                    },
+                            )
+                        }
+                    }
                     Text(
                         text = state.today.format(dateFormat),
                         style = MaterialTheme.typography.labelLarge,
@@ -320,6 +342,17 @@ private fun LogControl(
     val colors = MosaicTheme.colors
 
     when {
+        // A paused habit offers nothing to log. Leaving a live control here would invite
+        // taps that quietly restart judging a habit the user deliberately suspended.
+        row.isPaused -> {
+            Icon(
+                Icons.Default.PauseCircleOutline,
+                contentDescription = "Paused",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+
         habit.polarity == Polarity.NEGATIVE -> {
             OutlinedButton(onClick = onLog, shape = RoundedCornerShape(14.dp)) {
                 Text("I slipped")
@@ -408,6 +441,9 @@ private fun CheckTile(
 /** The supporting line under the hero number, when there is something worth saying. */
 private fun caption(row: HabitRowState): String? =
     when {
+        // Says why the row is quiet, so a paused habit does not read as a stalled one.
+        row.isPaused -> "paused"
+
         row.stats.atRisk -> "don't miss twice"
 
         row.headlineCount == 0 -> "starting over"

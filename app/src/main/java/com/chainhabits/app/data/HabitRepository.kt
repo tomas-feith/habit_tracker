@@ -3,8 +3,10 @@ package com.chainhabits.app.data
 import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Entry
 import com.chainhabits.app.domain.Habit
+import com.chainhabits.app.domain.Pause
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 
@@ -30,15 +32,36 @@ class HabitRepository(
             list.map { Entry(it.habitId, it.date, it.count) }
         }
 
-    /** Habits paired with the entries needed to draw their inline mosaic. */
-    fun observeHabitsWithEntries(since: LocalDate): Flow<List<Pair<Habit, List<Entry>>>> =
-        combine(observeHabits(), dao.observeEntriesSince(since)) { habits, entries ->
-            val byHabit = entries.groupBy { it.habitId }
+    fun observePausesFor(habitId: Long): Flow<List<Pause>> =
+        dao.observePausesFor(habitId).map { list -> list.map { it.toDomain() } }
+
+    /** Everything needed to evaluate one habit's timeline. */
+    data class HabitData(
+        val habit: Habit,
+        val entries: List<Entry>,
+        val pauses: List<Pause>,
+    ) {
+        /** True while a pause is running, which is what the UI offers "Resume" for. */
+        val isPaused: Boolean get() = pauses.any { it.isOpenEnded }
+    }
+
+    /** Habits with the entries and pauses needed to draw and judge their mosaic. */
+    fun observeHabitData(since: LocalDate): Flow<List<HabitData>> =
+        combine(
+            observeHabits(),
+            dao.observeEntriesSince(since),
+            dao.observeAllPauses(),
+        ) { habits, entries, pauses ->
+            val entriesByHabit = entries.groupBy { it.habitId }
+            val pausesByHabit = pauses.groupBy { it.habitId }
             habits.map { habit ->
-                habit to (
-                    byHabit[habit.id]
-                        .orEmpty()
-                        .map { Entry(it.habitId, it.date, it.count) }
+                HabitData(
+                    habit = habit,
+                    entries =
+                        entriesByHabit[habit.id]
+                            .orEmpty()
+                            .map { Entry(it.habitId, it.date, it.count) },
+                    pauses = pausesByHabit[habit.id].orEmpty().map { it.toDomain() },
                 )
             }
         }
@@ -85,6 +108,46 @@ class HabitRepository(
         date: LocalDate,
     ) {
         dao.logEvent(habit.id, date, toggleOff = false, delta = -1)
+        onDataChanged()
+    }
+
+    /**
+     * Suspends [habitId] from [from] onward. Idempotent - pausing twice changes nothing.
+     *
+     * Paused periods settle as not-scheduled, so they neither count as misses nor break a
+     * chain: a fortnight away is not a fortnight of failure.
+     */
+    suspend fun pauseHabit(
+        habitId: Long,
+        from: LocalDate,
+    ) {
+        dao.startPause(habitId, from)
+        onDataChanged()
+    }
+
+    /** Ends the running pause for [habitId] on [on]. No-op if it was not paused. */
+    suspend fun resumeHabit(
+        habitId: Long,
+        on: LocalDate,
+    ) {
+        dao.endPause(habitId, on)
+        onDataChanged()
+    }
+
+    /**
+     * Pauses every active habit - the "I'm going on holiday" button.
+     *
+     * Already-paused habits are left exactly as they are rather than being restarted, so
+     * a habit paused since last week keeps its real start date.
+     */
+    suspend fun pauseAll(from: LocalDate) {
+        dao.observeActiveHabits().first().forEach { dao.startPause(it.id, from) }
+        onDataChanged()
+    }
+
+    /** Ends every running pause. */
+    suspend fun resumeAll(on: LocalDate) {
+        dao.pausedHabitIds().forEach { dao.endPause(it, on) }
         onDataChanged()
     }
 

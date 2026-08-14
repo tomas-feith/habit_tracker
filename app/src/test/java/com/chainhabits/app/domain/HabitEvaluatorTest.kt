@@ -347,4 +347,143 @@ class HabitEvaluatorTest {
         val h = habit(createdOn = today)
         assertEquals(0f, timelineOf(h, emptyList()).stats.completionRate, 0.0f)
     }
+
+    // --- Pauses --------------------------------------------------------------------
+
+    private fun pause(
+        from: LocalDate,
+        to: LocalDate?,
+    ) = listOf(Pause(id = 1, habitId = 1, start = from, end = to))
+
+    private fun timelineOf(
+        h: Habit,
+        entries: List<Entry>,
+        pauses: List<Pause>,
+    ) = HabitEvaluator.timeline(h, entries, today, pauses)
+
+    @Test
+    fun `a paused day is not judged`() {
+        val away = today.minusDays(5)
+        val cells = timelineOf(habit(), allDoneExcept(away), pause(away, away)).cells
+        assertEquals(CellState.NOT_SCHEDULED, cells.first { it.date == away }.state)
+    }
+
+    @Test
+    fun `a pause does not break the chain`() {
+        val h = habit()
+        val away = range(today.minusDays(9), today.minusDays(3))
+        val entries = allDoneExcept(*away.toTypedArray())
+
+        val unpausedCells = timelineOf(h, entries).cells
+        val pausedTimeline = timelineOf(h, entries, pause(away.first(), away.last()))
+
+        assertTrue(
+            "a week of unexcused misses should break the chain",
+            unpausedCells.any { it.state == CellState.BROKEN },
+        )
+        assertFalse(
+            "a paused stretch must not break anything",
+            pausedTimeline.cells.any { it.state == CellState.BROKEN },
+        )
+        // The streak spans the pause without being inflated by it: paused days are dropped
+        // from the count rather than credited as completions you did not make.
+        assertEquals(
+            "the chain must run from creation through the pause to today",
+            range(start, today).size - away.size,
+            pausedTimeline.stats.currentStreak,
+        )
+        assertTrue(
+            "pausing must leave a far longer streak than eating the misses",
+            pausedTimeline.stats.currentStreak > timelineOf(h, entries).stats.currentStreak,
+        )
+    }
+
+    @Test
+    fun `an open-ended pause covers every day from its start`() {
+        val from = today.minusDays(4)
+        val cells =
+            timelineOf(
+                habit(),
+                allDoneExcept(*range(from, today).toTypedArray()),
+                pause(from, null),
+            ).cells
+
+        range(from, today).forEach { date ->
+            assertEquals(
+                "$date should be unjudged while the pause is running",
+                CellState.NOT_SCHEDULED,
+                cells.first { it.date == date }.state,
+            )
+        }
+    }
+
+    @Test
+    fun `days before a pause are still judged normally`() {
+        val missed = today.minusDays(10)
+        val away = today.minusDays(4)
+        val cells =
+            timelineOf(habit(), allDoneExcept(missed, away), pause(away, away)).cells
+
+        assertEquals(CellState.MISSED_ONCE, cells.first { it.date == missed }.state)
+    }
+
+    @Test
+    fun `a paused week on a weekly habit is not judged`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val weekEnd = weekStart.plusDays(6)
+
+        val cells = timelineOf(h, emptyList(), pause(weekStart, weekEnd)).cells
+        assertEquals(
+            CellState.NOT_SCHEDULED,
+            cells.first { it.date == weekStart }.state,
+        )
+    }
+
+    @Test
+    fun `a paused week still gets credit if the quota was met anyway`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(2))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val done = entries(weekStart, weekStart.plusDays(1))
+
+        val cells = timelineOf(h, done, pause(weekStart, weekStart.plusDays(6))).cells
+        assertEquals(
+            "working out on holiday should still count",
+            CellState.DONE,
+            cells.first { it.date == weekStart }.state,
+        )
+    }
+
+    @Test
+    fun `pausing does not confiscate a day you already earned`() {
+        // Regression: pausing today used to discard today's completion and reset the
+        // headline count to zero, which reads as being punished for going on holiday.
+        val cells = timelineOf(habit(), entries(today), pause(today, null)).cells
+        assertEquals(CellState.DONE, cells.first { it.date == today }.state)
+    }
+
+    @Test
+    fun `a pause grants a negative habit no free credit`() {
+        // An untouched day on a negative habit is normally a success, so a pause must not
+        // quietly hand out a clean streak for time spent not being judged.
+        val h = habit(polarity = Polarity.NEGATIVE)
+        val from = today.minusDays(3)
+        val cells = timelineOf(h, emptyList(), pause(from, null)).cells
+
+        range(from, today).forEach { date ->
+            assertEquals(
+                "$date was paused, so it should be unjudged rather than counted clean",
+                CellState.NOT_SCHEDULED,
+                cells.first { it.date == date }.state,
+            )
+        }
+    }
+
+    @Test
+    fun `a strict habit is not broken by a paused day`() {
+        val h = habit(strictness = Strictness.STRICT)
+        val away = today.minusDays(3)
+        val cells = timelineOf(h, allDoneExcept(away), pause(away, away)).cells
+        assertEquals(CellState.NOT_SCHEDULED, cells.first { it.date == away }.state)
+    }
 }

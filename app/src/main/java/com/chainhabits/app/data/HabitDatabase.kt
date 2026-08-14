@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import java.time.LocalDate
 
 class Converters {
@@ -18,8 +19,33 @@ class Converters {
     fun fromDate(date: LocalDate?): Long? = date?.toEpochDay()
 }
 
+/**
+ * Adds the `pauses` table.
+ *
+ * Purely additive - no existing row is touched - so an upgrade cannot lose history. The
+ * column names are quoted because `end` is a SQL keyword.
+ */
+private val MIGRATION_1_2 =
+    object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `pauses` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `habitId` INTEGER NOT NULL,
+                    `start` INTEGER NOT NULL,
+                    `end` INTEGER,
+                    FOREIGN KEY(`habitId`) REFERENCES `habits`(`id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_pauses_habitId` ON `pauses` (`habitId`)")
+        }
+    }
+
 @Database(
-    entities = [HabitEntity::class, EntryEntity::class],
+    entities = [HabitEntity::class, EntryEntity::class, PauseEntity::class],
     version = HabitDatabase.VERSION,
     exportSchema = true,
 )
@@ -28,7 +54,7 @@ abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
 
         const val NAME = "habits.db"
 
@@ -48,7 +74,7 @@ abstract class HabitDatabase : RoomDatabase() {
          * The exported schema JSONs under `app/schemas` are committed for exactly this
          * reason: they are what the migration test diffs against.
          */
-        val MIGRATIONS: List<Migration> = emptyList()
+        val MIGRATIONS: List<Migration> = listOf(MIGRATION_1_2)
 
         @Volatile
         private var instance: HabitDatabase? = null

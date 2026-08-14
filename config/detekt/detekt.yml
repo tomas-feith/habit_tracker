@@ -14,8 +14,11 @@ complexity:
     thresholdInFiles: 20
     thresholdInClasses: 20
     thresholdInObjects: 20
-    # A DAO is a list of queries; splitting it would be worse than leaving it long.
-    thresholdInInterfaces: 20
+    # A DAO is a list of queries; splitting it would be worse than leaving it long. The
+    # alternative - a DAO per table - buys nothing here, because the transactional helpers
+    # (logEvent, startPause) are exactly the places where one table's writes need to be
+    # consistent, and those read best next to the queries they wrap.
+    thresholdInInterfaces: 30
     ignorePrivate: true
   LongMethod:
     # Compose screen functions are declarative trees, not dense logic.

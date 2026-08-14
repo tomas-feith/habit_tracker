@@ -9,7 +9,6 @@ import com.chainhabits.app.HabitApplication
 import com.chainhabits.app.data.HabitRepository
 import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Cell
-import com.chainhabits.app.domain.Entry
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.HabitStats
@@ -31,6 +30,8 @@ data class HabitRowState(
     val stats: HabitStats,
     /** Events logged in the current period - "2 of 3 this week", or today's count. */
     val currentCount: Int,
+    /** True while a pause is running: the habit is suspended, not merely undone. */
+    val isPaused: Boolean = false,
 ) {
     val weeklyTarget: Int? get() = (habit.cadence as? Cadence.TimesPerWeek)?.target
 
@@ -64,8 +65,16 @@ data class HomeUiState(
     val today: LocalDate = LocalDate.now(),
     val loaded: Boolean = false,
 ) {
-    /** Habits one miss away from a broken chain. Drives the never-miss-twice banner. */
-    val atRisk: List<HabitRowState> get() = rows.filter { it.stats.atRisk }
+    /**
+     * Habits one miss away from a broken chain. Drives the never-miss-twice banner.
+     *
+     * Paused habits are excluded: nagging someone about a habit they deliberately suspended
+     * is exactly the noise the pause was meant to stop.
+     */
+    val atRisk: List<HabitRowState> get() = rows.filter { it.stats.atRisk && !it.isPaused }
+
+    /** True when every habit is suspended - the "on holiday" state. */
+    val allPaused: Boolean get() = rows.isNotEmpty() && rows.all { it.isPaused }
 }
 
 class HomeViewModel(
@@ -91,7 +100,7 @@ class HomeViewModel(
                 // habit.createdOn, so a windowed query would invent misses for any habit
                 // older than the window. A personal tracker's entry table stays tiny.
                 repository
-                    .observeHabitsWithEntries(HabitEvaluator.BEGINNING_OF_TIME)
+                    .observeHabitData(HabitEvaluator.BEGINNING_OF_TIME)
                     .map { it to day }
             },
             orderOverride,
@@ -104,20 +113,21 @@ class HomeViewModel(
         )
 
     private fun buildState(
-        pairs: List<Pair<Habit, List<Entry>>>,
+        data: List<HabitRepository.HabitData>,
         day: LocalDate,
         order: List<Long>?,
     ): HomeUiState {
         val rows =
-            pairs.map { (habit, entries) ->
+            data.map { (habit, entries, pauses) ->
                 // Evaluate the whole history once, then slice. Evaluating the visible window
                 // directly would restart the never-miss-twice counter at the window edge.
-                val timeline = HabitEvaluator.timeline(habit, entries, day)
+                val timeline = HabitEvaluator.timeline(habit, entries, day, pauses)
                 HabitRowState(
                     habit = habit,
                     cells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
                     stats = timeline.stats,
                     currentCount = timeline.currentCount,
+                    isPaused = pauses.any { it.isOpenEnded },
                 )
             }
         return HomeUiState(rows = rows.inOrder(order), today = day, loaded = true)
@@ -143,6 +153,27 @@ class HomeViewModel(
     fun removeEvent(habit: Habit) =
         viewModelScope.launch {
             repository.removeEvent(habit, today.value)
+        }
+
+    fun setPaused(
+        habit: Habit,
+        paused: Boolean,
+    ) = viewModelScope.launch {
+        if (paused) {
+            repository.pauseHabit(habit.id, today.value)
+        } else {
+            repository.resumeHabit(habit.id, today.value)
+        }
+    }
+
+    /** The holiday switch: suspends or resumes every habit at once. */
+    fun setAllPaused(paused: Boolean) =
+        viewModelScope.launch {
+            if (paused) {
+                repository.pauseAll(today.value)
+            } else {
+                repository.resumeAll(today.value)
+            }
         }
 
     /** Moves the dragged habit to the position currently held by [toKey]. */

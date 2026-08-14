@@ -71,6 +71,58 @@ interface HabitDao {
         date: LocalDate,
     )
 
+    @Query("SELECT * FROM pauses ORDER BY start")
+    fun observeAllPauses(): Flow<List<PauseEntity>>
+
+    @Query("SELECT * FROM pauses WHERE habitId = :habitId ORDER BY start")
+    fun observePausesFor(habitId: Long): Flow<List<PauseEntity>>
+
+    /** The running pause for a habit, if any. At most one is ever open at a time. */
+    @Query("SELECT * FROM pauses WHERE habitId = :habitId AND `end` IS NULL LIMIT 1")
+    suspend fun openPauseFor(habitId: Long): PauseEntity?
+
+    @Query("SELECT habitId FROM pauses WHERE `end` IS NULL")
+    suspend fun pausedHabitIds(): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertPause(pause: PauseEntity): Long
+
+    @Update
+    suspend fun updatePause(pause: PauseEntity)
+
+    @Delete
+    suspend fun deletePause(pause: PauseEntity)
+
+    /**
+     * Starts a pause for [habitId] on [from], unless one is already running.
+     *
+     * Transactional and idempotent: two taps, or a "pause everything" that includes an
+     * already-paused habit, must not leave two overlapping open pauses behind.
+     */
+    @Transaction
+    suspend fun startPause(
+        habitId: Long,
+        from: LocalDate,
+    ) {
+        if (openPauseFor(habitId) != null) return
+        insertPause(PauseEntity(habitId = habitId, start = from, end = null))
+    }
+
+    /**
+     * Ends the running pause for [habitId] on [on].
+     *
+     * A pause that ends before it began would be nonsense, so a same-day resume collapses to
+     * a single paused day rather than an inverted range.
+     */
+    @Transaction
+    suspend fun endPause(
+        habitId: Long,
+        on: LocalDate,
+    ) {
+        val open = openPauseFor(habitId) ?: return
+        updatePause(open.copy(end = maxOf(on, open.start)))
+    }
+
     /**
      * Records one event, or removes it if [toggleOff] and an event already exists.
      *

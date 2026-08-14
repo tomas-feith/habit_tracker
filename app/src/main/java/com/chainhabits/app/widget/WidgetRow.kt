@@ -6,6 +6,7 @@ import com.chainhabits.app.domain.CellState
 import com.chainhabits.app.domain.Entry
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
+import com.chainhabits.app.domain.Pause
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,8 @@ data class WidgetRow(
     val headline: Int,
     val isWeekly: Boolean,
     val polarity: Polarity,
+    /** True while a pause is running, so the row reads as suspended rather than undone. */
+    val isPaused: Boolean,
 ) {
     /** Whether the current period's bar is already met. */
     val isSatisfied: Boolean get() = target?.let { count >= it } ?: (count > 0)
@@ -58,12 +61,13 @@ data class WidgetRow(
      * outcome than making you open the app to admit one, and the widget offers no
      * confirmation step to soften it.
      */
-    val isTappable: Boolean get() = polarity == Polarity.POSITIVE
+    val isTappable: Boolean get() = polarity == Polarity.POSITIVE && !isPaused
 
     /** "3 of 5" for weekly habits, "2 weeks"/"9 days" otherwise. */
     val subtitle: String
         get() =
             when {
+                isPaused -> "paused"
                 target != null && target > 1 -> "$count of $target this week"
                 headline == 0 -> "no chain yet"
                 isWeekly -> "$headline ${plural(headline, "week")}"
@@ -84,15 +88,16 @@ data class WidgetRow(
  * window. A personal tracker's entry table stays small enough that this is cheap.
  */
 fun HabitRepository.observeWidgetRows(today: LocalDate): Flow<List<WidgetRow>> =
-    observeHabitsWithEntries(HabitEvaluator.BEGINNING_OF_TIME).map { pairs ->
-        pairs.map { (habit, entries) -> habit.toWidgetRow(entries, today) }
+    observeHabitData(HabitEvaluator.BEGINNING_OF_TIME).map { data ->
+        data.map { it.habit.toWidgetRow(it.entries, it.pauses, today) }
     }
 
 private fun Habit.toWidgetRow(
     entries: List<Entry>,
+    pauses: List<Pause>,
     today: LocalDate,
 ): WidgetRow {
-    val timeline = HabitEvaluator.timeline(this, entries, today)
+    val timeline = HabitEvaluator.timeline(this, entries, today, pauses)
     val stats = timeline.stats
     return WidgetRow(
         id = id,
@@ -105,5 +110,6 @@ private fun Habit.toWidgetRow(
         headline = if (strictness == Strictness.STRICT) stats.currentStreak else stats.chainLength,
         isWeekly = isWeekly,
         polarity = polarity,
+        isPaused = pauses.any { it.isOpenEnded },
     )
 }
