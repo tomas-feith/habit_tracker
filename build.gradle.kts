@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.ktlint)
@@ -8,11 +7,24 @@ plugins {
 }
 
 subprojects {
-    apply(plugin = rootProject.libs.plugins.ktlint.get().pluginId)
-    apply(plugin = rootProject.libs.plugins.detekt.get().pluginId)
+    apply(
+        plugin =
+            rootProject.libs.plugins.ktlint
+                .get()
+                .pluginId,
+    )
+    apply(
+        plugin =
+            rootProject.libs.plugins.detekt
+                .get()
+                .pluginId,
+    )
 
     configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
-        version.set(rootProject.libs.versions.ktlintTool.get())
+        version.set(
+            rootProject.libs.versions.ktlintTool
+                .get(),
+        )
         // Generated Room and Compose sources are not ours to format.
         filter {
             exclude { it.file.path.contains("/build/") }

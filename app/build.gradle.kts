@@ -1,18 +1,20 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
+    // AGP 9 applies the Kotlin Android plugin itself; applying it here as well fails.
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.tsfeith.habits"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.tsfeith.habits"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -33,10 +35,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
@@ -51,8 +49,6 @@ android {
         warningsAsErrors = true
         abortOnError = true
         checkDependencies = true
-        sarifReport = true
-        htmlReport = true
         disable +=
             setOf(
                 // Version bumps are Dependabot's job, not a build failure's.
@@ -62,10 +58,6 @@ android {
                 // Fires on lint jars shipped inside androidx.navigation, which we can
                 // neither fix nor usefully act on.
                 "ObsoleteLintCustomCheck",
-                // Enforces Play Store target-API deadlines. This app is sideloaded and
-                // never published, so the deadline does not apply. Raising targetSdk
-                // past 34 would also mean moving off AGP 8.5, which supports up to 34.
-                "OldTargetApi",
             )
     }
 
@@ -76,9 +68,23 @@ android {
     }
 }
 
+// AGP 9 dropped the `kotlinOptions` block in favour of the Kotlin plugin's own DSL.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
+
+// The migration test replays the committed schema JSONs, so they have to be on the
+// instrumentation test classpath as assets.
+android.sourceSets
+    .getByName("androidTest")
+    .assets
+    .srcDir("$projectDir/schemas")
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -104,4 +110,9 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    // Replays committed schema JSONs so migrations are verified, not assumed.
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
+    debugImplementation(libs.androidx.ui.test.manifest)
 }

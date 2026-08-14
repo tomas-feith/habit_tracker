@@ -89,8 +89,10 @@ object HabitEvaluator {
             val status =
                 when {
                     !isScheduled(habit, date) -> PeriodStatus.NOT_SCHEDULED
+
                     // A daily habit must be done once, and tolerates no slips at all.
                     date == today -> settleOpen(habit.polarity, count, floor = 1, allowance = 0)
+
                     else -> settleClosed(habit.polarity, count, floor = 1, allowance = 0)
                 }
             out += Period(date, status, count)
@@ -116,12 +118,14 @@ object HabitEvaluator {
 
             val status =
                 when {
-                    week == currentWeek -> settleOpen(habit.polarity, total, target, target)
+                    week == currentWeek -> {
+                        settleOpen(habit.polarity, total, target, target)
+                    }
 
                     // A habit created on a Thursday only had part of that week available, so
                     // judging it against the full quota would open with an unearned miss.
                     // Credit it if the quota was somehow met, otherwise don't judge it.
-                    isPartialWeek(habit, week) ->
+                    isPartialWeek(habit, week) -> {
                         if (settleClosed(habit.polarity, total, target, target) ==
                             PeriodStatus.GOOD
                         ) {
@@ -129,8 +133,11 @@ object HabitEvaluator {
                         } else {
                             PeriodStatus.NOT_SCHEDULED
                         }
+                    }
 
-                    else -> settleClosed(habit.polarity, total, target, target)
+                    else -> {
+                        settleClosed(habit.polarity, total, target, target)
+                    }
                 }
             out += Period(week, status, total)
             week = week.plusWeeks(1)
@@ -206,8 +213,11 @@ object HabitEvaluator {
         allowance: Int,
     ): PeriodStatus =
         when (polarity) {
-            Polarity.POSITIVE -> if (count >= floor) PeriodStatus.GOOD else PeriodStatus.PENDING
-            Polarity.NEGATIVE ->
+            Polarity.POSITIVE -> {
+                if (count >= floor) PeriodStatus.GOOD else PeriodStatus.PENDING
+            }
+
+            Polarity.NEGATIVE -> {
                 if (count >
                     allowance
                 ) {
@@ -215,6 +225,7 @@ object HabitEvaluator {
                 } else {
                     PeriodStatus.PENDING
                 }
+            }
         }
 
     private fun isScheduled(
@@ -247,8 +258,14 @@ object HabitEvaluator {
         return periods.map { period ->
             val state =
                 when (period.status) {
-                    PeriodStatus.NOT_SCHEDULED -> CellState.NOT_SCHEDULED
-                    PeriodStatus.PENDING -> CellState.PENDING
+                    PeriodStatus.NOT_SCHEDULED -> {
+                        CellState.NOT_SCHEDULED
+                    }
+
+                    PeriodStatus.PENDING -> {
+                        CellState.PENDING
+                    }
+
                     PeriodStatus.GOOD -> {
                         consecutiveMisses = 0
                         CellState.DONE
