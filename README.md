@@ -111,29 +111,49 @@ at the window's left edge and paint a broken chain as merely amber. Slice with
 Because the domain layer takes `today` as a parameter and never reads the clock, every
 rollover rule is testable without mocking time.
 
+## Database migrations
+
+The database holds the **only** copy of your history — no server, no sync. Destructive
+fallback is therefore deliberately never enabled: a missing migration must fail loudly in
+testing rather than quietly wipe months of tracking on a real device.
+
+To change the schema:
+
+1. Edit the entities and bump `HabitDatabase.VERSION`.
+2. Add a `Migration(n, n + 1)` to `HabitDatabase.MIGRATIONS` with the SQL.
+3. `MigrationTest` fails until the committed schema JSONs and the SQL agree.
+
+The exported schemas under `app/schemas` are committed precisely so the migration test has
+something to diff against. Do not delete them.
+
 ## Building
 
-Requires JDK 17 and the Android SDK. Neither is committed.
+Requires JDK 17 and the Android SDK. Neither is committed. The SDK is located via
+`ANDROID_HOME`; there is no `local.properties` (Android Lint objects to it, and it is
+machine-specific anyway).
 
 ```bash
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`minSdk` is 26, `compileSdk`/`targetSdk` 34.
+`minSdk` 26, `compileSdk`/`targetSdk` 37. AGP 9 applies the Kotlin Android plugin itself,
+so the build script must **not** apply `org.jetbrains.kotlin.android` — doing so fails.
 
 ### Checks
 
 ```bash
-./gradlew ktlintFormat     # auto-fix formatting
-./gradlew ktlintCheck      # formatting
-./gradlew detekt           # static analysis
-./gradlew testDebugUnitTest
-./gradlew lintDebug        # Android Lint, warnings are errors
+./gradlew ktlintFormat            # auto-fix formatting
+./gradlew ktlintCheck             # formatting
+./gradlew detekt                  # static analysis
+./gradlew testDebugUnitTest       # domain unit tests
+./gradlew lintDebug               # Android Lint, warnings are errors
+./gradlew connectedDebugAndroidTest   # migration tests, needs a device
 ```
 
-CI runs all of these on every push and PR to `main`, and uploads the reports and the debug
-APK as artifacts.
+CI runs all of these on every push and PR to `main` and uploads the reports and debug APK.
+The instrumentation job boots an API 35 emulator and is gated to `main`, so PR feedback
+stays fast.
 
 Enable the pre-commit hook (ktlint + detekt on Kotlin changes) once per clone:
 
@@ -143,9 +163,8 @@ git config core.hooksPath .githooks
 
 ## Known limitations
 
-- **Room is at schema version 1 with no migrations.** The first data-model change needs a
-  migration or the app will crash on upgrade rather than silently losing history.
 - **Reminders are inexact alarms.** A nudge is worth nothing extra at exactly 07:00 versus
   07:12, and this avoids the exact-alarm permission and is much kinder to the battery.
-- **No instrumentation tests.** The domain layer is well covered by unit tests; the Compose
-  and Room layers are not covered automatically.
+- **No UI tests.** The domain layer is thoroughly unit-tested and migrations are covered on
+  device, but the Compose screens are verified by eye rather than automatically.
+- **No backup or export.** Uninstalling the app destroys the history.
