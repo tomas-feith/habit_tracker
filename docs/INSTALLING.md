@@ -32,23 +32,32 @@ by full path or add that directory to `PATH`.
 
 ## First install
 
-From the repository root:
+Install the **release** build on the phone you actually use. It is signed with a durable key
+you control, so it can be updated for as long as you keep that key. A debug build is signed
+with a throwaway machine-local key and is for development only - see
+[The signing key](#the-signing-key) for why that distinction is the whole ballgame.
+
+Set up signing once per machine ([details below](#configuring-signing-on-a-machine)), then:
 
 ```powershell
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
-.\gradlew.bat installDebug
+.\gradlew.bat installRelease
 ```
 
-That builds and installs in one step. To build and install separately - useful when the
-phone is not attached at build time:
+To build and install separately - useful when the phone is not attached at build time:
 
 ```powershell
-.\gradlew.bat assembleDebug
-adb install -r app\build\outputs\apk\debug\app-debug.apk
+.\gradlew.bat assembleRelease
+adb install -r app\build\outputs\apk\release\app-release.apk
 ```
 
-The debug APK is large (around 19 MB) because it is unminified and carries debug
-information. That is expected and does not affect how the app runs.
+If the output is named `app-release-unsigned.apk`, signing is not configured on this machine
+and the APK cannot be installed. Fix the configuration rather than falling back to a debug
+build, which would install fine and then be unupdatable.
+
+For development on an emulator, `installDebug` is still the right command. The debug APK is
+noticeably larger (roughly 19 MB against 13 MB) because it is unminified and carries debug
+information.
 
 Without a cable, copy `app-debug.apk` to the phone by any means and tap it in the Files app.
 Android will ask you to allow "install unknown apps" for whichever app you opened it from,
@@ -59,7 +68,7 @@ and will warn that the source is unverified. Both are normal for anything not fr
 Rebuild and install again. The same command does it:
 
 ```powershell
-.\gradlew.bat installDebug
+.\gradlew.bat installRelease
 ```
 
 This is an in-place upgrade, not a fresh install: **your habits and history are preserved.**
@@ -71,7 +80,7 @@ An update succeeds when both of these match the installed app:
 - the **signing key**.
 
 Nothing else matters. `versionCode` does not need bumping for `adb install -r` or
-`installDebug`; Android only refuses to move *backwards* to a lower `versionCode`.
+`installRelease`; Android only refuses to move *backwards* to a lower `versionCode`.
 
 If either the id or the key differs, Android treats the APK as a different app and refuses
 the update. The only way in from there is to uninstall, and **uninstalling deletes the
@@ -84,54 +93,67 @@ signed by the same key as the install it replaces - forever, with no override, n
 path, and no support channel. Lose the key and the installed app can never be updated again;
 you can only uninstall and start over with empty history.
 
-By default a debug build is signed with the automatically generated debug keystore:
+A debug build is signed with an automatically generated, machine-local keystore at
+`~/.android/debug.keystore`. That key is an accident of tooling: it appears without being
+asked for, lives outside every backup, and is regenerated silently if it goes missing. It is
+fine for an emulator and wrong for the phone you actually use.
 
-```
-~/.android/debug.keystore          (Windows: %USERPROFILE%\.android\debug.keystore)
-alias: androiddebugkey   store password: android   key password: android
-```
-
-Modern Android Studio generates these valid for 30 years, so expiry is not the risk. Check
-yours if you want to be sure:
+Release builds are therefore signed with a **dedicated key you own**, generated once:
 
 ```powershell
-keytool -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -storepass android -alias androiddebugkey
+keytool -genkeypair -v -keystore "$env:USERPROFILE\.android\chainhabits-release.jks" `
+  -alias chainhabits -keyalg RSA -keysize 4096 -validity 10950 `
+  -dname "CN=Chain Habits, OU=Personal, O=Chain Habits, C=PT"
 ```
 
 `keytool` ships with the JDK and is often not on `PATH`. If it is not found, call it as
 `"$env:JAVA_HOME\bin\keytool.exe"`, or from the JDK bundled with Android Studio at
 `jbr\bin\keytool.exe` inside the Android Studio install directory.
 
-The risk is **loss**. That file sits outside this repository, outside version control, and
-outside most backup setups. Reinstalling Windows, wiping the user profile, moving to a new
-machine, or letting the tooling regenerate it all end the same way: no more updates.
+The keystore lives **outside the repository** deliberately. A gitignored file inside the tree
+is one `git add -f` away from being published, and this repository is public. `.gitignore`
+covers `*.jks`, `*.keystore`, `keystore.properties`, `signing.properties` and
+`secrets.properties` with no negated exceptions, but defence in depth is cheap and the
+failure is permanent.
 
-Pick one of the following before you accumulate history worth keeping.
+### Back it up now
 
-### Option 1 - back up the debug keystore
+The key file and its password are the only unrecoverable artifacts in this project.
+Everything else can be rebuilt from source; this cannot. Put both somewhere durable - a
+password manager entry with the `.jks` attached is ideal.
 
-Copy `%USERPROFILE%\.android\debug.keystore` somewhere durable: a password manager, an
-encrypted drive, a private cloud folder. **Not this repository** - it is gitignored
-precisely because the repo is public, and that rule has no negated exceptions so a stray
-keystore cannot be re-included by accident.
+Reinstalling Windows, wiping the user profile, or moving to a new machine without that
+backup ends the same way: the installed app can never be updated again, and recovering means
+an uninstall that destroys the database.
 
-That is the whole task. Everything above keeps working, and restoring the file onto a new
-machine restores your ability to update.
+Note that the database is *not* protected by backing up the key, and the key is not protected
+by Android's backup of the database. They are separate risks and both need covering.
 
-### Option 2 - use a real release keystore
+### Configuring signing on a machine
 
-Generate a dedicated release key, wire it into `signingConfigs`, and install a release build
-instead. This gives a smaller and faster app, a key that is a deliberate artifact rather
-than an accident of tooling, and it is the prerequisite for any tag-triggered release
-workflow later.
+Signing credentials are read from `keystore.properties` in the repository root. The file is
+gitignored and must be recreated on each machine:
 
-The cost is one uninstall and reinstall, because the signing key changes. **That cost is
-zero today and grows with every day of history you log**, so if you are going to do it, do
-it before you start using the app in earnest.
+```properties
+# Forward slashes: java.util.Properties treats a backslash as an escape character.
+storeFile=C:/Users/<you>/.android/chainhabits-release.jks
+storePassword=<password>
+keyAlias=chainhabits
+keyPassword=<password>
+```
 
-Whichever option you choose, the keystore file and its passwords must never be committed.
-`.gitignore` already covers `*.jks`, `*.keystore`, `keystore.properties`, `signing.properties`
-and `secrets.properties`.
+When the file is absent - on CI, or on a fresh clone - no release signing config is declared
+and `assembleRelease` produces `app-release-unsigned.apk`. That is deliberate. Falling back
+to the debug key would produce an APK that installs perfectly and then cannot be updated by
+a real release, which is a far worse failure than an obviously unusable artifact.
+
+Verify which key actually signed an APK:
+
+```powershell
+apksigner verify --print-certs app\build\outputs\apk\release\app-release.apk
+```
+
+`apksigner` is in `$env:LOCALAPPDATA\Android\Sdk\build-tools\<version>\`.
 
 ## Verifying an install worked
 
@@ -165,3 +187,23 @@ turn it off.
 Backup is a genuine safety net for a lost phone, but it is not instant and not a substitute
 for keeping the signing key. Restoring a backup onto an app you can no longer update leaves
 you exactly where you started.
+
+### Copying the database off a debug build
+
+Useful before anything destructive, and the only way to inspect real data directly. This
+works on **debug builds only**: `run-as` requires a debuggable package, so a release install
+is closed to it and there is no way in without root.
+
+```bash
+for f in habits.db habits.db-wal habits.db-shm; do
+  adb exec-out "run-as com.chainhabits.app cat databases/$f" > "$f"
+done
+```
+
+Use `exec-out`, never `adb shell`. `adb shell` allocates a PTY that translates LF to CRLF,
+which silently corrupts binary data - the copy comes back slightly larger than the original
+and SQLite then reports the tables as missing rather than failing outright. Comparing sizes
+against `adb shell run-as com.chainhabits.app ls -l databases/` catches it immediately.
+
+All three files matter. The main `.db` can be almost empty while the entire contents sit in
+the write-ahead log, so a copy of `habits.db` alone can look valid and contain nothing.

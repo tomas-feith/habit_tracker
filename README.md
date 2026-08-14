@@ -155,17 +155,22 @@ something to diff against. Do not delete them.
 There is no Play Store listing. You build the APK and side-load it over USB:
 
 ```bash
-./gradlew installDebug
+./gradlew installRelease
 ```
 
-Updating is the same command, and your history is preserved in place. The one thing that can
-permanently cost you that history is losing the **signing key** — Android will not let an
-app be updated by a different key, and the only way past that is an uninstall that wipes the
-database.
+Updating is the same command, and your history is preserved in place.
 
-[**docs/INSTALLING.md**](docs/INSTALLING.md) covers all of it: phone setup, first install,
-updating, how to safeguard the key, and what the common `INSTALL_FAILED_*` errors mean.
-Worth reading once before you start logging history you would mind losing.
+Release builds are signed with a dedicated key, configured per machine via a gitignored
+`keystore.properties`. Without it the build still succeeds but produces an *unsigned* APK —
+deliberately, since silently falling back to the debug key yields something that installs
+fine and can never be updated afterwards.
+
+That key is the one unrecoverable artifact here. Android refuses to update an app signed by
+a different key, and the only way past that is an uninstall that wipes the database.
+
+[**docs/INSTALLING.md**](docs/INSTALLING.md) covers all of it: phone setup, signing setup,
+first install, updating, safeguarding the key, copying the database off a debug build, and
+what the common `INSTALL_FAILED_*` errors mean.
 
 ## Building
 

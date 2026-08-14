@@ -1,4 +1,20 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+/**
+ * Local signing credentials, absent on CI and on a fresh clone.
+ *
+ * The file is gitignored and points at a keystore stored outside the repository, because
+ * this key cannot be regenerated: Android identifies an installed app by applicationId plus
+ * signing certificate, so losing it means the app can never be updated in place again and
+ * the only way forward destroys the database.
+ *
+ * See docs/INSTALLING.md.
+ */
+val keystoreProperties =
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.let { file ->
+        Properties().apply { file.inputStream().use { load(it) } }
+    }
 
 plugins {
     // AGP 9 applies the Kotlin Android plugin itself; applying it here as well fails.
@@ -20,8 +36,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Only declared when the credentials are present. On CI and on a fresh clone the
+        // release build simply comes out unsigned, which is correct: an unsigned artifact
+        // is obviously unusable, whereas one silently signed with the debug key looks fine
+        // and then cannot be updated by a real release later.
+        keystoreProperties?.let { props ->
+            create("release") {
+                storeFile = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
+
+            // Left off for now: an unminified release is one fewer variable if a
+            // release-only failure ever appears. Turning it on later needs the Room and
+            // Compose keep rules verified on device, not just a green build.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
