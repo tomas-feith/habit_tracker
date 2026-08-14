@@ -78,10 +78,12 @@ class Timeline internal constructor(
                     if (run > longest) longest = run
                 }
 
-                CellState.MISSED_ONCE, CellState.BROKEN -> run = 0
+                CellState.MISSED_ONCE, CellState.BROKEN -> {
+                    run = 0
+                }
 
                 // Pending and unscheduled periods neither extend nor break a run.
-                CellState.PENDING, CellState.NOT_SCHEDULED -> Unit
+                CellState.PENDING, CellState.NOT_SCHEDULED -> {}
             }
         }
         return Totals(longestRun = longest)
@@ -120,7 +122,7 @@ class Timeline internal constructor(
                 }
 
                 // An open period on a positive habit simply isn't done yet.
-                cell.state == CellState.PENDING -> Unit
+                cell.state == CellState.PENDING -> {}
 
                 else -> {
                     streakDone = true

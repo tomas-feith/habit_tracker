@@ -48,6 +48,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import androidx.compose.ui.text.intl.Locale as ComposeLocale
 
 private val DEFAULT_REMINDER = LocalTime.of(8, 0)
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
@@ -179,7 +180,8 @@ private fun CadenceField(
                 TargetStepper(state, viewModel)
             }
 
-            CadenceChoice.DAILY -> Unit
+            // Daily habits need no extra control.
+            CadenceChoice.DAILY -> {}
         }
     }
 }
@@ -190,12 +192,16 @@ private fun DayPicker(
     state: EditUiState,
     viewModel: EditViewModel,
 ) {
+    // Read through Compose's locale, not Locale.getDefault(): the latter is invisible to
+    // recomposition, so day names would keep the old language after a locale change.
+    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
+
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         DayOfWeek.entries.forEach { day ->
             FilterChip(
                 selected = day in state.days,
                 onClick = { viewModel.toggleDay(day) },
-                label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
+                label = { Text(day.getDisplayName(TextStyle.SHORT, locale)) },
             )
         }
     }
@@ -231,12 +237,14 @@ private fun StrictnessField(
         title = "After a miss",
         help =
             when (state.strictness) {
-                Strictness.STANDARD ->
+                Strictness.STANDARD -> {
                     "Never miss twice: one miss is recoverable, two in a row breaks the chain."
+                }
 
-                Strictness.STRICT ->
+                Strictness.STRICT -> {
                     "One miss breaks the chain immediately. For habits where the single " +
                         "instance is the harm, not a data point."
+                }
             },
     ) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -307,16 +315,20 @@ private fun Field(
 
 private fun cadenceHelp(state: EditUiState): String =
     when (state.cadenceChoice) {
-        CadenceChoice.DAILY -> "Every day counts. One mosaic cell is one day."
+        CadenceChoice.DAILY -> {
+            "Every day counts. One mosaic cell is one day."
+        }
 
-        CadenceChoice.SPECIFIC_DAYS ->
+        CadenceChoice.SPECIFIC_DAYS -> {
             "Only the chosen days count; the rest show as off, not as failures."
+        }
 
-        CadenceChoice.TIMES_PER_WEEK ->
+        CadenceChoice.TIMES_PER_WEEK -> {
             if (state.polarity == Polarity.NEGATIVE) {
                 "An allowance of ${state.target} per week. One mosaic cell is one week."
             } else {
                 "Any ${state.target} days in the week. No single day can fail - " +
                     "one cell is one week."
             }
+        }
     }

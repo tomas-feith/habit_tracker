@@ -161,10 +161,17 @@ private fun Headline(
         Text(
             text =
                 when {
-                    strict && habit.polarity == Polarity.NEGATIVE ->
+                    strict && habit.polarity == Polarity.NEGATIVE -> {
                         "${unit}s clean" + if (value == 0) " - restarting today" else ""
-                    strict -> "${unit}s in a row"
-                    else -> "${unit}s in the current chain"
+                    }
+
+                    strict -> {
+                        "${unit}s in a row"
+                    }
+
+                    else -> {
+                        "${unit}s in the current chain"
+                    }
                 },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -269,8 +276,11 @@ private fun cadenceDescription(habit: Habit): String {
         }
     val cadence =
         when (val c = habit.cadence) {
-            is Cadence.Daily -> "Every day."
-            is Cadence.SpecificDays ->
+            is Cadence.Daily -> {
+                "Every day."
+            }
+
+            is Cadence.SpecificDays -> {
                 c.days
                     .sortedBy { it.value }
                     .joinToString(
@@ -281,13 +291,15 @@ private fun cadenceDescription(habit: Habit): String {
                             .lowercase()
                             .replaceFirstChar { it.uppercase() }
                     }.let { "On $it." }
+            }
 
-            is Cadence.TimesPerWeek ->
+            is Cadence.TimesPerWeek -> {
                 if (habit.polarity == Polarity.NEGATIVE) {
                     "At most ${c.target}x per week. One cell is one week."
                 } else {
                     "At least ${c.target}x per week. One cell is one week."
                 }
+            }
         }
     return "$cadence $strictness"
 }

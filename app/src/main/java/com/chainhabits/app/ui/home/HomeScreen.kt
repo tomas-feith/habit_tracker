@@ -50,6 +50,7 @@ import com.chainhabits.app.ui.components.QuotaPips
 import com.chainhabits.app.ui.theme.MosaicTheme
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.ui.text.intl.Locale as ComposeLocale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +60,10 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val dateFormat = remember { DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()) }
+    // Compose's locale rather than Locale.getDefault(), so the date re-formats if the
+    // user changes language while the app is running.
+    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
+    val dateFormat = remember(locale) { DateTimeFormatter.ofPattern("EEE d MMM", locale) }
 
     // Without this the app keeps yesterday's date after being left open overnight, and
     // taps would be logged against the wrong day.
@@ -236,12 +240,13 @@ private fun LogControl(
     val colors = MosaicTheme.colors
 
     when {
-        habit.polarity == Polarity.NEGATIVE ->
+        habit.polarity == Polarity.NEGATIVE -> {
             OutlinedButton(onClick = onLog) {
                 Text("I slipped")
             }
+        }
 
-        habit.cadence is Cadence.TimesPerWeek ->
+        habit.cadence is Cadence.TimesPerWeek -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -254,8 +259,9 @@ private fun LogControl(
                 }
                 OutlinedButton(onClick = onLog) { Text("Log one") }
             }
+        }
 
-        else ->
+        else -> {
             Box(
                 modifier =
                     Modifier
@@ -278,6 +284,7 @@ private fun LogControl(
                     )
                 }
             }
+        }
     }
 }
 
@@ -287,12 +294,21 @@ private fun headline(row: HabitRowState): String {
     val plural = if (n == 1) unit else "${unit}s"
 
     return when {
-        row.habit.strictness == Strictness.STRICT && row.habit.polarity == Polarity.NEGATIVE ->
+        row.habit.strictness == Strictness.STRICT && row.habit.polarity == Polarity.NEGATIVE -> {
             if (n == 0) "Restarting today" else "$n $plural clean"
+        }
 
-        n == 0 -> "Starting over"
-        row.stats.atRisk -> "$n $plural, one miss - don't miss twice"
-        else -> "$n $plural"
+        n == 0 -> {
+            "Starting over"
+        }
+
+        row.stats.atRisk -> {
+            "$n $plural, one miss - don't miss twice"
+        }
+
+        else -> {
+            "$n $plural"
+        }
     }
 }
 
@@ -301,11 +317,17 @@ private fun quotaLabel(
     target: Int,
 ): String =
     when {
-        row.habit.polarity == Polarity.NEGATIVE ->
+        row.habit.polarity == Polarity.NEGATIVE -> {
             "${row.currentCount} of $target allowance used this week"
+        }
 
-        row.currentCount > target -> "${row.currentCount} of $target this week - over target"
-        else -> "${row.currentCount} of $target this week"
+        row.currentCount > target -> {
+            "${row.currentCount} of $target this week - over target"
+        }
+
+        else -> {
+            "${row.currentCount} of $target this week"
+        }
     }
 
 @Composable

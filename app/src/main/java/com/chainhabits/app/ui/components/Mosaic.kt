@@ -106,12 +106,16 @@ private fun DrawScope.drawCell(
 ) {
     val radius = CornerRadius(size.minDimension * 0.22f)
     when (state) {
-        CellState.DONE -> drawRoundRect(colors.done, topLeft, size, radius)
+        CellState.DONE -> {
+            drawRoundRect(colors.done, topLeft, size, radius)
+        }
 
-        CellState.BROKEN -> drawRoundRect(colors.broken, topLeft, size, radius)
+        CellState.BROKEN -> {
+            drawRoundRect(colors.broken, topLeft, size, radius)
+        }
 
         // Deliberately quiet: an isolated miss is noise, not failure.
-        CellState.MISSED_ONCE ->
+        CellState.MISSED_ONCE -> {
             drawRoundRect(
                 color = colors.missedOnce,
                 topLeft = topLeft,
@@ -119,6 +123,7 @@ private fun DrawScope.drawCell(
                 cornerRadius = radius,
                 style = Stroke(width = size.minDimension * 0.16f),
             )
+        }
 
         // Carries no judgement - a weekly habit shouldn't look like six daily failures.
         CellState.NOT_SCHEDULED -> {
@@ -133,7 +138,7 @@ private fun DrawScope.drawCell(
         }
 
         // The current period, still open. Outlined so "settled" reads apart from "in play".
-        CellState.PENDING ->
+        CellState.PENDING -> {
             drawRoundRect(
                 color = colors.todayOutline.copy(alpha = 0.55f),
                 topLeft = topLeft,
@@ -141,6 +146,7 @@ private fun DrawScope.drawCell(
                 cornerRadius = radius,
                 style = Stroke(width = size.minDimension * 0.12f),
             )
+        }
     }
 }
 
