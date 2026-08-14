@@ -8,10 +8,17 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 
+// The container colours matter as much as the primaries: components like the FAB default
+// to primaryContainer, so leaving them unset leaves Material's stock purple sitting in the
+// middle of a green app.
 private val LightScheme =
     lightColorScheme(
         primary = Green40,
+        onPrimary = Color.White,
+        primaryContainer = Green90,
+        onPrimaryContainer = Green10,
         secondary = Sand40,
         tertiary = Clay40,
     )
@@ -19,6 +26,9 @@ private val LightScheme =
 private val DarkScheme =
     darkColorScheme(
         primary = Green80,
+        onPrimary = Green10,
+        primaryContainer = Green30,
+        onPrimaryContainer = Green90,
         secondary = Sand80,
         tertiary = Clay80,
     )

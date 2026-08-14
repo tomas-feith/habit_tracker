@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tsfeith.habits.data.HabitRepository
 import com.tsfeith.habits.domain.Cell
+import com.tsfeith.habits.domain.CellState
 import com.tsfeith.habits.domain.Habit
 import com.tsfeith.habits.domain.HabitEvaluator
 import com.tsfeith.habits.domain.HabitStats
@@ -19,10 +20,16 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** One bar of the six-month chart. */
+/**
+ * One bar of the six-month chart.
+ *
+ * [hasData] separates "you did nothing that month" from "the habit did not exist yet";
+ * only the first deserves an empty bar.
+ */
 data class MonthBar(
     val label: String,
     val rate: Float,
+    val hasData: Boolean,
 )
 
 data class DetailUiState(
@@ -75,14 +82,20 @@ class DetailViewModel(
         timeline: Timeline,
         today: LocalDate,
     ): List<MonthBar> =
-        (MONTHS_SHOWN - 1 downTo 0).map { back ->
-            val monthStart = today.withDayOfMonth(1).minusMonths(back.toLong())
-            val monthEnd = minOf(monthStart.plusMonths(1).minusDays(1), today)
-            MonthBar(
-                label = monthStart.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
-                rate = timeline.between(monthStart, monthEnd).completionRate(),
-            )
-        }
+        (MONTHS_SHOWN - 1 downTo 0)
+            .map { back ->
+                val monthStart = today.withDayOfMonth(1).minusMonths(back.toLong())
+                val monthEnd = minOf(monthStart.plusMonths(1).minusDays(1), today)
+                val cells = timeline.between(monthStart, monthEnd)
+                MonthBar(
+                    label = monthStart.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
+                    rate = cells.completionRate(),
+                    hasData = cells.any { it.state != CellState.NOT_SCHEDULED },
+                )
+            }
+            // Months before the habit existed have nothing to report. Drawing them as
+            // empty 0% bars reads as "you failed all of March", which is a lie.
+            .dropWhile { !it.hasData }
 
     fun archive() =
         viewModelScope.launch {

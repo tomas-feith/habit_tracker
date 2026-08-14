@@ -128,11 +128,12 @@ fun HomeScreen(
  */
 @Composable
 private fun NeverMissTwiceBanner(atRisk: List<HabitRowState>) {
+    // Tinted from the mosaic's own "missed once" amber rather than a Material error
+    // colour. A red banner would say "you failed", which is the opposite of the point:
+    // one miss is recoverable, and the banner is meant to be a nudge, not an alarm.
+    val amber = MosaicTheme.colors.missedOnce
     Card(
-        colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            ),
+        colors = CardDefaults.cardColors(containerColor = amber.copy(alpha = 0.22f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -143,14 +144,14 @@ private fun NeverMissTwiceBanner(atRisk: List<HabitRowState>) {
             Icon(
                 Icons.Outlined.WarningAmber,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                tint = amber,
             )
             Column {
                 Text(
                     text = "Never miss twice",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -162,7 +163,7 @@ private fun NeverMissTwiceBanner(atRisk: List<HabitRowState>) {
                                 " slipped once. The chains are still intact."
                             },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }

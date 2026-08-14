@@ -101,6 +101,11 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
 
+    // Pinned on the main classpath, not just androidTest: AGP's consistent resolution
+    // forces the test classpath to match whatever the app runtime resolved, so pinning
+    // only the test side is silently overridden back down.
+    implementation(platform(libs.kotlinx.serialization.bom))
+
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
@@ -112,6 +117,9 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     // Replays committed schema JSONs so migrations are verified, not assumed.
     androidTestImplementation(libs.androidx.room.testing)
+    // Room's MigrationTestHelper parses those JSONs with kotlinx-serialization, and a
+    // core/json version mismatch surfaces only at runtime as AbstractMethodError.
+    androidTestImplementation(platform(libs.kotlinx.serialization.bom))
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.test.manifest)
