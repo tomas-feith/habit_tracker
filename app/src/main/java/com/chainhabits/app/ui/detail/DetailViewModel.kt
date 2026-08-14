@@ -4,19 +4,26 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chainhabits.app.data.HabitRepository
 import com.chainhabits.app.domain.Cell
-import com.chainhabits.app.domain.CellState
-import com.chainhabits.app.domain.Entry
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.HabitStats
+import com.chainhabits.app.domain.Timeline
+import com.chainhabits.app.domain.completionRate
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 
-data class MonthBar(val label: String, val rate: Float)
+/** One bar of the six-month chart. */
+data class MonthBar(
+    val label: String,
+    val rate: Float,
+)
 
 data class DetailUiState(
     val habit: Habit? = null,
@@ -32,55 +39,65 @@ class DetailViewModel(
     private val repository: HabitRepository,
     habitId: Long,
 ) : ViewModel() {
+    /** Bumped on resume so a screen left open past midnight rolls over. */
+    private val today = MutableStateFlow(LocalDate.now())
 
-    private val today = LocalDate.now()
+    val uiState: StateFlow<DetailUiState> =
+        combine(
+            repository.observeHabit(habitId),
+            repository.observeEntriesFor(habitId),
+            today,
+        ) { habit, entries, day ->
+            if (habit == null) return@combine DetailUiState()
 
-    val uiState: StateFlow<DetailUiState> = combine(
-        repository.observeHabit(habitId),
-        repository.observeEntriesFor(habitId),
-    ) { habit, entries ->
-        if (habit == null) return@combine DetailUiState()
+            val timeline = HabitEvaluator.timeline(habit, entries, day)
+            DetailUiState(
+                habit = habit,
+                stats = timeline.stats,
+                yearCells = timeline.dayCellsSince(day.minusDays(YEAR_OF_DAYS)),
+                periodCells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
+                months = monthlyRates(timeline, day),
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), DetailUiState())
 
-        val yearStart = today.minusDays(363)
-        DetailUiState(
-            habit = habit,
-            stats = HabitEvaluator.stats(habit, entries, today),
-            yearCells = HabitEvaluator.dayLevelCells(habit, entries, yearStart, today),
-            periodCells = HabitEvaluator.cells(
-                habit,
-                entries,
-                HabitEvaluator.inlineWindowStart(habit, today),
-                today,
-            ),
-            months = monthlyRates(habit, entries),
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailUiState())
+    fun refreshDate() {
+        today.value = LocalDate.now()
+    }
 
-    /** Completion rate for each of the last six months, oldest first. */
-    private fun monthlyRates(habit: Habit, entries: List<Entry>): List<MonthBar> =
-        (5 downTo 0).map { back ->
-        val monthStart = today.withDayOfMonth(1).minusMonths(back.toLong())
-        val monthEnd = minOf(monthStart.plusMonths(1).minusDays(1), today)
-        val cells = HabitEvaluator.cells(habit, entries, monthStart, monthEnd)
-
-        val judged = cells.count {
-            it.state == CellState.DONE ||
-                it.state == CellState.MISSED_ONCE ||
-                it.state == CellState.BROKEN
+    /**
+     * Completion rate for each of the last six months, oldest first.
+     *
+     * Slices the already-evaluated timeline rather than re-evaluating each month, so a
+     * past month's final day settles as a real miss instead of being mistaken for an
+     * open period.
+     */
+    private fun monthlyRates(
+        timeline: Timeline,
+        today: LocalDate,
+    ): List<MonthBar> =
+        (MONTHS_SHOWN - 1 downTo 0).map { back ->
+            val monthStart = today.withDayOfMonth(1).minusMonths(back.toLong())
+            val monthEnd = minOf(monthStart.plusMonths(1).minusDays(1), today)
+            MonthBar(
+                label = monthStart.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
+                rate = timeline.between(monthStart, monthEnd).completionRate(),
+            )
         }
-        val good = cells.count { it.state == CellState.DONE }
 
-        MonthBar(
-            label = monthStart.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
-            rate = if (judged == 0) 0f else good.toFloat() / judged,
-        )
-    }
+    fun archive() =
+        viewModelScope.launch {
+            uiState.value.habit?.let { repository.archiveHabit(it, today.value) }
+        }
 
-    fun archive() = viewModelScope.launch {
-        uiState.value.habit?.let { repository.archiveHabit(it, today) }
-    }
+    fun delete() =
+        viewModelScope.launch {
+            uiState.value.habit?.let { repository.deleteHabit(it) }
+        }
 
-    fun delete() = viewModelScope.launch {
-        uiState.value.habit?.let { repository.deleteHabit(it) }
+    private companion object {
+        /** 52 whole weeks, so the heatmap's columns line up. */
+        const val YEAR_OF_DAYS = 363L
+        const val MONTHS_SHOWN = 6
+        const val STOP_TIMEOUT_MS = 5_000L
     }
 }

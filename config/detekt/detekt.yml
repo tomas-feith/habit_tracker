@@ -1,0 +1,62 @@
+# Project overrides on top of detekt's defaults (buildUponDefaultConfig = true).
+# Only deviations are listed; everything else keeps detekt's shipped setting.
+
+build:
+  maxIssues: 0
+
+complexity:
+  LongParameterList:
+    # Compose composables legitimately take many parameters, most with defaults.
+    ignoreDefaultParameters: true
+    functionThreshold: 8
+    constructorThreshold: 8
+  TooManyFunctions:
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+    thresholdInObjects: 20
+    # A DAO is a list of queries; splitting it would be worse than leaving it long.
+    thresholdInInterfaces: 20
+    ignorePrivate: true
+  LongMethod:
+    # Compose screen functions are declarative trees, not dense logic.
+    threshold: 120
+  CyclomaticComplexMethod:
+    threshold: 18
+
+style:
+  MagicNumber:
+    # Layout and drawing code is full of one-off sizes and ratios that are clearer
+    # inline than hoisted into named constants.
+    ignoreNumbers: ['-1', '0', '1', '2', '7']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreNamedArgument: true
+    # Layout code is full of one-off sizes, and test fixtures are full of relative dates
+    # like `today.minusDays(3)`. Naming those hurts readability rather than helping it.
+    excludes: ['**/ui/**', '**/test/**', '**/androidTest/**']
+  MaxLineLength:
+    maxLineLength: 100
+    excludes: ['**/test/**']
+  ReturnCount:
+    max: 4
+  UnusedPrivateMember:
+    active: true
+  ForbiddenComment:
+    # Flag leftover markers so they don't quietly ship.
+    comments:
+      - reason: 'Unresolved work should be tracked, not buried in a comment.'
+        value: 'TODO:'
+      - reason: 'Unresolved work should be tracked, not buried in a comment.'
+        value: 'FIXME:'
+
+naming:
+  FunctionNaming:
+    # Composables are PascalCase by convention.
+    ignoreAnnotated: ['Composable']
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: true
+  SwallowedException:
+    active: true

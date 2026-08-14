@@ -31,18 +31,20 @@ data class MosaicColors(
     val todayOutline: Color,
 )
 
-val LightMosaicColors = MosaicColors(
-    done = Color(0xFF1B7A57),
-    missedOnce = Color(0xFFD9C48A),
-    broken = Color(0xFFC0533C),
-    notScheduled = Color(0xFFE4E4E0),
-    todayOutline = Color(0xFF3A3A38),
-)
+val LightMosaicColors =
+    MosaicColors(
+        done = Color(0xFF1B7A57),
+        missedOnce = Color(0xFFD9C48A),
+        broken = Color(0xFFC0533C),
+        notScheduled = Color(0xFFE4E4E0),
+        todayOutline = Color(0xFF3A3A38),
+    )
 
-val DarkMosaicColors = MosaicColors(
-    done = Color(0xFF5FC49B),
-    missedOnce = Color(0xFF9A8447),
-    broken = Color(0xFFE0705A),
-    notScheduled = Color(0xFF33332F),
-    todayOutline = Color(0xFFE8E8E4),
-)
+val DarkMosaicColors =
+    MosaicColors(
+        done = Color(0xFF5FC49B),
+        missedOnce = Color(0xFF9A8447),
+        broken = Color(0xFFE0705A),
+        notScheduled = Color(0xFF33332F),
+        todayOutline = Color(0xFFE8E8E4),
+    )

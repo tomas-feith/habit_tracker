@@ -6,7 +6,6 @@ import com.chainhabits.app.data.HabitRepository
 import com.chainhabits.app.notify.Reminders
 
 class HabitApplication : Application() {
-
     val repository: HabitRepository by lazy {
         HabitRepository(HabitDatabase.get(this).habitDao())
     }

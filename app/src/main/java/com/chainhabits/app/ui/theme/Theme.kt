@@ -9,17 +9,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 
-private val LightScheme = lightColorScheme(
-    primary = Green40,
-    secondary = Sand40,
-    tertiary = Clay40,
-)
+private val LightScheme =
+    lightColorScheme(
+        primary = Green40,
+        secondary = Sand40,
+        tertiary = Clay40,
+    )
 
-private val DarkScheme = darkColorScheme(
-    primary = Green80,
-    secondary = Sand80,
-    tertiary = Clay80,
-)
+private val DarkScheme =
+    darkColorScheme(
+        primary = Green80,
+        secondary = Sand80,
+        tertiary = Clay80,
+    )
 
 val LocalMosaicColors = staticCompositionLocalOf { LightMosaicColors }
 

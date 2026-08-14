@@ -21,7 +21,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
@@ -40,6 +43,32 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+
+    lint {
+        // This is a personal app with no release train, so a warning that never gets
+        // triaged is just noise. Fail the build instead.
+        warningsAsErrors = true
+        abortOnError = true
+        checkDependencies = true
+        sarifReport = true
+        htmlReport = true
+        disable +=
+            setOf(
+                // Version bumps are Dependabot's job, not a build failure's.
+                "GradleDependency",
+                "NewerVersionAvailable",
+                "AndroidGradlePluginVersion",
+                // Fires on lint jars shipped inside androidx.navigation, which we can
+                // neither fix nor usefully act on.
+                "ObsoleteLintCustomCheck",
+            )
+    }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
     }
 }
 

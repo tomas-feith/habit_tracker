@@ -39,10 +39,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chainhabits.app.domain.Cadence
-import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
 import com.chainhabits.app.ui.components.MosaicStrip
@@ -60,6 +60,13 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val dateFormat = remember { DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()) }
+
+    // Without this the app keeps yesterday's date after being left open overnight, and
+    // taps would be logged against the wrong day.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshDate()
+        onPauseOrDispose { }
+    }
 
     Scaffold(
         topBar = {
@@ -118,9 +125,10 @@ fun HomeScreen(
 @Composable
 private fun NeverMissTwiceBanner(atRisk: List<HabitRowState>) {
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-        ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            ),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -142,9 +150,13 @@ private fun NeverMissTwiceBanner(atRisk: List<HabitRowState>) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = atRisk.joinToString(", ") { it.habit.name } +
-                        if (atRisk.size == 1) " slipped once. The chain is still intact."
-                        else " slipped once. The chains are still intact.",
+                    text =
+                        atRisk.joinToString(", ") { it.habit.name } +
+                            if (atRisk.size == 1) {
+                                " slipped once. The chain is still intact."
+                            } else {
+                                " slipped once. The chains are still intact."
+                            },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onTertiaryContainer,
                 )
@@ -162,9 +174,10 @@ private fun HabitCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-        ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            ),
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -214,47 +227,57 @@ private fun HabitCard(
  * failure is backwards, and far too easy to hit by accident.
  */
 @Composable
-private fun LogControl(row: HabitRowState, onLog: () -> Unit, onUndo: () -> Unit) {
+private fun LogControl(
+    row: HabitRowState,
+    onLog: () -> Unit,
+    onUndo: () -> Unit,
+) {
     val habit = row.habit
     val colors = MosaicTheme.colors
 
     when {
-        habit.polarity == Polarity.NEGATIVE -> OutlinedButton(onClick = onLog) {
-            Text("I slipped")
-        }
+        habit.polarity == Polarity.NEGATIVE ->
+            OutlinedButton(onClick = onLog) {
+                Text("I slipped")
+            }
 
-        habit.cadence is Cadence.TimesPerWeek -> Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            // Weekly habits accumulate rather than toggle, so undo has to be explicit.
-            if (row.currentCount > 0) {
-                OutlinedButton(onClick = onUndo, contentPadding = PaddingValues(8.dp, 4.dp)) {
-                    Text("-")
+        habit.cadence is Cadence.TimesPerWeek ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Weekly habits accumulate rather than toggle, so undo has to be explicit.
+                if (row.currentCount > 0) {
+                    OutlinedButton(onClick = onUndo, contentPadding = PaddingValues(8.dp, 4.dp)) {
+                        Text("-")
+                    }
+                }
+                OutlinedButton(onClick = onLog) { Text("Log one") }
+            }
+
+        else ->
+            Box(
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (row.isSatisfied) {
+                                colors.done
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                        ).clickable(onClick = onLog),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (row.isSatisfied) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Done today",
+                        tint = MaterialTheme.colorScheme.surface,
+                    )
                 }
             }
-            OutlinedButton(onClick = onLog) { Text("Log one") }
-        }
-
-        else -> Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (row.isSatisfied) colors.done
-                    else MaterialTheme.colorScheme.surfaceVariant
-                )
-                .clickable(onClick = onLog),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (row.isSatisfied) {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = "Done today",
-                    tint = MaterialTheme.colorScheme.surface,
-                )
-            }
-        }
     }
 }
 
@@ -273,13 +296,17 @@ private fun headline(row: HabitRowState): String {
     }
 }
 
-private fun quotaLabel(row: HabitRowState, target: Int): String = when {
-    row.habit.polarity == Polarity.NEGATIVE ->
-        "${row.currentCount} of ${target} allowance used this week"
+private fun quotaLabel(
+    row: HabitRowState,
+    target: Int,
+): String =
+    when {
+        row.habit.polarity == Polarity.NEGATIVE ->
+            "${row.currentCount} of $target allowance used this week"
 
-    row.currentCount > target -> "${row.currentCount} of $target this week - over target"
-    else -> "${row.currentCount} of $target this week"
-}
+        row.currentCount > target -> "${row.currentCount} of $target this week - over target"
+        else -> "${row.currentCount} of $target this week"
+    }
 
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {

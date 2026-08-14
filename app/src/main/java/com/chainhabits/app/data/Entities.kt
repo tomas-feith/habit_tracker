@@ -13,6 +13,9 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
+/** Reminder times are stored as a minute-of-day integer rather than a formatted string. */
+private const val MINUTES_PER_HOUR = 60
+
 enum class CadenceType { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 
 @Entity(tableName = "habits")
@@ -46,7 +49,7 @@ data class HabitEntity(
             parentColumns = ["id"],
             childColumns = ["habitId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("habitId"), Index("date")],
 )
@@ -56,39 +59,46 @@ data class EntryEntity(
     val count: Int,
 )
 
-fun HabitEntity.toDomain(): Habit = Habit(
-    id = id,
-    name = name,
-    polarity = polarity,
-    strictness = strictness,
-    cadence = when (cadenceType) {
-        CadenceType.DAILY -> Cadence.Daily
-        CadenceType.SPECIFIC_DAYS -> Cadence.SpecificDays(cadenceDays.toDaySet())
-        CadenceType.TIMES_PER_WEEK -> Cadence.TimesPerWeek(cadenceTarget)
-    },
-    reminderTime = reminderMinuteOfDay?.let { LocalTime.of(it / 60, it % 60) },
-    createdOn = createdOn,
-    archivedOn = archivedOn,
-    sortOrder = sortOrder,
-)
+fun HabitEntity.toDomain(): Habit =
+    Habit(
+        id = id,
+        name = name,
+        polarity = polarity,
+        strictness = strictness,
+        cadence =
+            when (cadenceType) {
+                CadenceType.DAILY -> Cadence.Daily
+                CadenceType.SPECIFIC_DAYS -> Cadence.SpecificDays(cadenceDays.toDaySet())
+                CadenceType.TIMES_PER_WEEK -> Cadence.TimesPerWeek(cadenceTarget)
+            },
+        reminderTime =
+            reminderMinuteOfDay?.let {
+                LocalTime.of(it / MINUTES_PER_HOUR, it % MINUTES_PER_HOUR)
+            },
+        createdOn = createdOn,
+        archivedOn = archivedOn,
+        sortOrder = sortOrder,
+    )
 
-fun Habit.toEntity(): HabitEntity = HabitEntity(
-    id = id,
-    name = name,
-    polarity = polarity,
-    strictness = strictness,
-    cadenceType = when (cadence) {
-        is Cadence.Daily -> CadenceType.DAILY
-        is Cadence.SpecificDays -> CadenceType.SPECIFIC_DAYS
-        is Cadence.TimesPerWeek -> CadenceType.TIMES_PER_WEEK
-    },
-    cadenceDays = (cadence as? Cadence.SpecificDays)?.days?.toBitmask() ?: 0,
-    cadenceTarget = (cadence as? Cadence.TimesPerWeek)?.target ?: 1,
-    reminderMinuteOfDay = reminderTime?.let { it.hour * 60 + it.minute },
-    createdOn = createdOn,
-    archivedOn = archivedOn,
-    sortOrder = sortOrder,
-)
+fun Habit.toEntity(): HabitEntity =
+    HabitEntity(
+        id = id,
+        name = name,
+        polarity = polarity,
+        strictness = strictness,
+        cadenceType =
+            when (cadence) {
+                is Cadence.Daily -> CadenceType.DAILY
+                is Cadence.SpecificDays -> CadenceType.SPECIFIC_DAYS
+                is Cadence.TimesPerWeek -> CadenceType.TIMES_PER_WEEK
+            },
+        cadenceDays = (cadence as? Cadence.SpecificDays)?.days?.toBitmask() ?: 0,
+        cadenceTarget = (cadence as? Cadence.TimesPerWeek)?.target ?: 1,
+        reminderMinuteOfDay = reminderTime?.let { it.hour * MINUTES_PER_HOUR + it.minute },
+        createdOn = createdOn,
+        archivedOn = archivedOn,
+        sortOrder = sortOrder,
+    )
 
 fun Set<DayOfWeek>.toBitmask(): Int = fold(0) { acc, d -> acc or (1 shl d.value) }
 
