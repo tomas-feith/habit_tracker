@@ -150,6 +150,23 @@ To change the schema:
 The exported schemas under `app/schemas` are committed precisely so the migration test has
 something to diff against. Do not delete them.
 
+## Installing on a phone
+
+There is no Play Store listing. You build the APK and side-load it over USB:
+
+```bash
+./gradlew installDebug
+```
+
+Updating is the same command, and your history is preserved in place. The one thing that can
+permanently cost you that history is losing the **signing key** — Android will not let an
+app be updated by a different key, and the only way past that is an uninstall that wipes the
+database.
+
+[**docs/INSTALLING.md**](docs/INSTALLING.md) covers all of it: phone setup, first install,
+updating, how to safeguard the key, and what the common `INSTALL_FAILED_*` errors mean.
+Worth reading once before you start logging history you would mind losing.
+
 ## Building
 
 Requires JDK 17 and the Android SDK. Neither is committed. The SDK is located via
