@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 31+ variant. Identical to the base configuration except for targetCellWidth/Height,
+  which let the launcher place the widget by grid cells rather than guessing from dp. Three
+  by three shows roughly four habits, and the list scrolls past that.
+
+  Kept as a separate resource rather than a suppressed attribute so the API split is visible
+  in the file layout instead of buried in a lint annotation.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="3"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

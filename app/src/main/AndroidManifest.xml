@@ -15,9 +15,21 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HabitTracker">
 
+        <!--
+            singleTop, not the default "standard": the whole app is one activity hosting a
+            Compose back stack, so a second instance means a second, empty back stack.
+
+            Tapping the launcher icon while the app is already running sends
+            MAIN/LAUNCHER with FLAG_ACTIVITY_NEW_TASK, and under "standard" that creates a
+            fresh MainActivity on top of the existing one. The old instance is still there
+            with its navigation intact, but you are now looking at a new one that starts at
+            the home screen - so leaving a half-written habit and coming back appeared to
+            throw the edit screen away.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.HabitTracker">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -28,6 +40,23 @@
         <receiver
             android:name=".notify.ReminderReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".widget.HabitWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <!-- Midnight rollover: nothing writes to the database when the date
+                     changes, so without these the widget keeps showing yesterday. -->
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/habit_widget_info" />
+        </receiver>
 
         <receiver
             android:name=".notify.BootReceiver"

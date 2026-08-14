@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Base configuration, used below API 31. The v31 variant adds targetCellWidth/Height, which
+  are the grid-aware sizing hints newer launchers prefer; here only the dp minimums exist.
+
+  updatePeriodMillis is 0 on purpose: its floor is 30 minutes and it wakes the device.
+  Refreshes are pushed instead - by the repository on any write, and by
+  HabitWidgetReceiver on the clock broadcasts that matter.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

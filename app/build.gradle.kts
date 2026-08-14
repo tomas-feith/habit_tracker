@@ -142,6 +142,11 @@ dependencies {
     // only the test side is silently overridden back down.
     implementation(platform(libs.kotlinx.serialization.bom))
 
+    // Home-screen widget. Glance renders to RemoteViews, so it is a separate Compose-like
+    // runtime rather than the app's own Compose UI - nothing is shared but the domain layer.
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)

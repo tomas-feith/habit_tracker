@@ -25,6 +25,14 @@ import java.time.LocalDate
 object HabitEvaluator {
     private const val DAYS_PER_WEEK = 7
 
+    /**
+     * Lower bound for "every entry ever", for callers loading a habit's full history.
+     *
+     * Deliberately not `LocalDate.EPOCH`, which is API 33 and would crash on anything
+     * older - this app supports API 26.
+     */
+    val BEGINNING_OF_TIME: LocalDate = LocalDate.ofEpochDay(0)
+
     /** Days of history behind the home screen's daily strip, including today. */
     private const val INLINE_DAYS = 28L
 

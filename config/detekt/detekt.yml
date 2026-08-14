@@ -34,7 +34,7 @@ style:
     ignoreNamedArgument: true
     # Layout code is full of one-off sizes, and test fixtures are full of relative dates
     # like `today.minusDays(3)`. Naming those hurts readability rather than helping it.
-    excludes: ['**/ui/**', '**/test/**', '**/androidTest/**']
+    excludes: ['**/ui/**', '**/widget/**', '**/test/**', '**/androidTest/**']
   MaxLineLength:
     maxLineLength: 100
     excludes: ['**/test/**']

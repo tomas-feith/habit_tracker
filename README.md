@@ -85,6 +85,23 @@ A period settles **early** once its outcome is determined: completing a positive
 turns today solid immediately (that is the reward), and a slip marks a negative habit
 immediately. A period is `PENDING` only while genuinely open.
 
+## Home-screen widget
+
+Today's habits on the launcher, tickable without opening the app — which is closer to the
+moment you actually decide than anything inside it. The tile carries the same meaning as a
+mosaic cell, so the widget reads as a slice of the app rather than a second visual language.
+
+**Positive habits are tappable; negative habits are not.** A negative habit needs no daily
+action — a clean day is the default and you only ever log slips — so the only thing a tap
+could do there is record one. A pocket tap that silently breaks a strict chain is worse than
+having to open the app to admit a slip, and a widget has nowhere to put a confirmation.
+
+Widgets render as `RemoteViews` in the launcher's process, so no Room `Flow` reaches them and
+refreshes have to be pushed. Two things push: `HabitRepository`'s change hook after any write,
+and `HabitWidgetReceiver` on the clock broadcasts, since nothing writes to the database at
+midnight but yesterday's ticks stop being today's. `updatePeriodMillis` is deliberately 0 —
+its floor is 30 minutes and it wakes the device to do nothing useful.
+
 ## Architecture
 
 ```
@@ -102,6 +119,9 @@ ui/         Compose. One ViewModel per screen, unidirectional state.
             edit/            create and edit habits
 
 notify/     AlarmManager reminders and their boot restore.
+
+widget/     Glance home-screen widget. Renders to RemoteViews in the launcher's
+            process, so it shares the domain layer and nothing else.
 ```
 
 **`HabitEvaluator.timeline()` evaluates a habit's entire history, and every view is a slice

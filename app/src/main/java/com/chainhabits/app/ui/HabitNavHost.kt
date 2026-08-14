@@ -2,6 +2,7 @@ package com.chainhabits.app.ui
 
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -72,6 +73,7 @@ private fun editFactory(habitId: Long): ViewModelProvider.Factory =
             val app =
                 this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                     as HabitApplication
-            EditViewModel(app.repository, habitId)
+            // The handle carries the in-progress form across process death; see EditViewModel.
+            EditViewModel(app.repository, habitId, createSavedStateHandle())
         }
     }

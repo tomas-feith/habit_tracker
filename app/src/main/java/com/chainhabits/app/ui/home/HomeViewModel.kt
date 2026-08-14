@@ -90,7 +90,9 @@ class HomeViewModel(
                 // All of it, not a trailing window: lifetime stats are computed from
                 // habit.createdOn, so a windowed query would invent misses for any habit
                 // older than the window. A personal tracker's entry table stays tiny.
-                repository.observeHabitsWithEntries(BEGINNING_OF_TIME).map { it to day }
+                repository
+                    .observeHabitsWithEntries(HabitEvaluator.BEGINNING_OF_TIME)
+                    .map { it to day }
             },
             orderOverride,
         ) { (pairs, day), order ->
@@ -164,14 +166,6 @@ class HomeViewModel(
         }
 
     companion object {
-        /**
-         * Lower bound for "every entry ever".
-         *
-         * Deliberately not `LocalDate.EPOCH`, which is API 33 and would crash on
-         * anything older - this app supports API 26.
-         */
-        private val BEGINNING_OF_TIME: LocalDate = LocalDate.ofEpochDay(0)
-
         /** How long the flow stays warm after the screen goes away. */
         private const val STOP_TIMEOUT_MS = 5_000L
 
