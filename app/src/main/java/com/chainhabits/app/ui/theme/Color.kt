@@ -3,8 +3,11 @@ package com.chainhabits.app.ui.theme
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
+val Green90 = Color(0xFFD3EEE1)
 val Green80 = Color(0xFF7FD1AE)
 val Green40 = Color(0xFF1B7A57)
+val Green30 = Color(0xFF235C46)
+val Green10 = Color(0xFF06301F)
 val Sand80 = Color(0xFFE6D3A3)
 val Sand40 = Color(0xFF7A6524)
 val Clay80 = Color(0xFFF0B0A0)
