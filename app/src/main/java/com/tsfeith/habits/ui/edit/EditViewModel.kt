@@ -18,6 +18,12 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
+/** A weekly target below one would mean the habit can never be satisfied. */
+const val MIN_WEEKLY_TARGET = 1
+
+/** Above seven a weekly target is just a daily habit with extra steps. */
+const val MAX_WEEKLY_TARGET = 7
+
 enum class CadenceChoice { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 
 data class EditUiState(
@@ -34,26 +40,27 @@ data class EditUiState(
 ) {
     val isValid: Boolean get() = name.isNotBlank()
 
-    fun toHabit() = Habit(
-        id = id,
-        name = name.trim(),
-        polarity = polarity,
-        strictness = strictness,
-        cadence = when (cadenceChoice) {
-            CadenceChoice.DAILY -> Cadence.Daily
-            CadenceChoice.SPECIFIC_DAYS -> Cadence.SpecificDays(days)
-            CadenceChoice.TIMES_PER_WEEK -> Cadence.TimesPerWeek(target)
-        },
-        reminderTime = reminderTime,
-        createdOn = createdOn,
-    )
+    fun toHabit() =
+        Habit(
+            id = id,
+            name = name.trim(),
+            polarity = polarity,
+            strictness = strictness,
+            cadence =
+                when (cadenceChoice) {
+                    CadenceChoice.DAILY -> Cadence.Daily
+                    CadenceChoice.SPECIFIC_DAYS -> Cadence.SpecificDays(days)
+                    CadenceChoice.TIMES_PER_WEEK -> Cadence.TimesPerWeek(target)
+                },
+            reminderTime = reminderTime,
+            createdOn = createdOn,
+        )
 }
 
 class EditViewModel(
     private val repository: HabitRepository,
     private val habitId: Long,
 ) : ViewModel() {
-
     private val _state = MutableStateFlow(EditUiState())
     val state: StateFlow<EditUiState> = _state.asStateFlow()
 
@@ -69,11 +76,12 @@ class EditViewModel(
                             name = h.name,
                             polarity = h.polarity,
                             strictness = h.strictness,
-                            cadenceChoice = when (h.cadence) {
-                                is Cadence.Daily -> CadenceChoice.DAILY
-                                is Cadence.SpecificDays -> CadenceChoice.SPECIFIC_DAYS
-                                is Cadence.TimesPerWeek -> CadenceChoice.TIMES_PER_WEEK
-                            },
+                            cadenceChoice =
+                                when (h.cadence) {
+                                    is Cadence.Daily -> CadenceChoice.DAILY
+                                    is Cadence.SpecificDays -> CadenceChoice.SPECIFIC_DAYS
+                                    is Cadence.TimesPerWeek -> CadenceChoice.TIMES_PER_WEEK
+                                },
                             days = (h.cadence as? Cadence.SpecificDays)?.days ?: it.days,
                             target = (h.cadence as? Cadence.TimesPerWeek)?.target ?: it.target,
                             reminderTime = h.reminderTime,
@@ -86,37 +94,50 @@ class EditViewModel(
     }
 
     fun setName(v: String) = _state.update { it.copy(name = v) }
+
     fun setPolarity(v: Polarity) = _state.update { it.copy(polarity = v) }
+
     fun setStrictness(v: Strictness) = _state.update { it.copy(strictness = v) }
+
     fun setCadence(v: CadenceChoice) = _state.update { it.copy(cadenceChoice = v) }
-    fun setTarget(v: Int) = _state.update { it.copy(target = v.coerceIn(1, 7)) }
+
+    fun setTarget(v: Int) =
+        _state.update { it.copy(target = v.coerceIn(MIN_WEEKLY_TARGET, MAX_WEEKLY_TARGET)) }
+
     fun setReminder(v: LocalTime?) = _state.update { it.copy(reminderTime = v) }
 
-    fun toggleDay(day: DayOfWeek) = _state.update {
-        val next = if (day in it.days) it.days - day else it.days + day
-        // Never let the set empty out - a habit scheduled on no days can never be done.
-        it.copy(days = next.ifEmpty { it.days })
-    }
-
-    fun save(context: Context) = viewModelScope.launch {
-        val habit = _state.value.toHabit()
-        val saved = if (isNew) {
-            habit.copy(id = repository.addHabit(habit))
-        } else {
-            repository.updateHabit(habit)
-            habit
+    fun toggleDay(day: DayOfWeek) =
+        _state.update {
+            val next = if (day in it.days) it.days - day else it.days + day
+            // Never let the set empty out - a habit scheduled on no days can never be done.
+            it.copy(days = next.ifEmpty { it.days })
         }
 
-        if (saved.reminderTime != null) Reminders.schedule(context, saved)
-        else Reminders.cancel(context, saved.id)
+    fun save(context: Context) =
+        viewModelScope.launch {
+            val habit = _state.value.toHabit()
+            val saved =
+                if (isNew) {
+                    habit.copy(id = repository.addHabit(habit))
+                } else {
+                    repository.updateHabit(habit)
+                    habit
+                }
 
-        _state.update { it.copy(saved = true) }
-    }
+            if (saved.reminderTime != null) {
+                Reminders.schedule(context, saved)
+            } else {
+                Reminders.cancel(context, saved.id)
+            }
 
-    fun delete(context: Context) = viewModelScope.launch {
-        if (isNew) return@launch
-        Reminders.cancel(context, habitId)
-        repository.getHabit(habitId)?.let { repository.deleteHabit(it) }
-        _state.update { it.copy(saved = true) }
-    }
+            _state.update { it.copy(saved = true) }
+        }
+
+    fun delete(context: Context) =
+        viewModelScope.launch {
+            if (isNew) return@launch
+            Reminders.cancel(context, habitId)
+            repository.getHabit(habitId)?.let { repository.deleteHabit(it) }
+            _state.update { it.copy(saved = true) }
+        }
 }

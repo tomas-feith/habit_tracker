@@ -6,7 +6,6 @@ import com.tsfeith.habits.data.HabitRepository
 import com.tsfeith.habits.notify.Reminders
 
 class HabitApplication : Application() {
-
     val repository: HabitRepository by lazy {
         HabitRepository(HabitDatabase.get(this).habitDao())
     }

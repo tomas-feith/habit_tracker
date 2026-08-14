@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tsfeith.habits.domain.Cadence
 import com.tsfeith.habits.domain.Habit
@@ -54,6 +55,11 @@ fun DetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val habit = state.habit
     val stats = state.stats
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshDate()
+        onPauseOrDispose { }
+    }
 
     Scaffold(
         topBar = {
@@ -78,11 +84,12 @@ fun DetailScreen(
         }
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Headline(habit, stats.currentStreak, stats.chainLength)
@@ -135,7 +142,11 @@ fun DetailScreen(
  * sick day doesn't present as total failure.
  */
 @Composable
-private fun Headline(habit: Habit, currentStreak: Int, chainLength: Int) {
+private fun Headline(
+    habit: Habit,
+    currentStreak: Int,
+    chainLength: Int,
+) {
     val strict = habit.strictness == Strictness.STRICT
     val value = if (strict) currentStreak else chainLength
     val unit = if (habit.isWeekly) "week" else "day"
@@ -148,12 +159,13 @@ private fun Headline(habit: Habit, currentStreak: Int, chainLength: Int) {
             color = MosaicTheme.colors.done,
         )
         Text(
-            text = when {
-                strict && habit.polarity == Polarity.NEGATIVE ->
-                    "${unit}s clean" + if (value == 0) " - restarting today" else ""
-                strict -> "${unit}s in a row"
-                else -> "${unit}s in the current chain"
-            },
+            text =
+                when {
+                    strict && habit.polarity == Polarity.NEGATIVE ->
+                        "${unit}s clean" + if (value == 0) " - restarting today" else ""
+                    strict -> "${unit}s in a row"
+                    else -> "${unit}s in the current chain"
+                },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -169,7 +181,10 @@ private fun Headline(habit: Habit, currentStreak: Int, chainLength: Int) {
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+private fun Section(
+    title: String,
+    content: @Composable () -> Unit,
+) {
     Column {
         Text(
             text = title,
@@ -182,12 +197,17 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
+private fun Stat(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-        ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            ),
     ) {
         Column(Modifier.padding(12.dp)) {
             Text(
@@ -241,23 +261,33 @@ private fun MonthChart(months: List<MonthBar>) {
 }
 
 private fun cadenceDescription(habit: Habit): String {
-    val strictness = if (habit.strictness == Strictness.STRICT) {
-        "One miss breaks the chain."
-    } else {
-        "One miss is recoverable; two in a row breaks the chain."
-    }
-    val cadence = when (val c = habit.cadence) {
-        is Cadence.Daily -> "Every day."
-        is Cadence.SpecificDays -> c.days
-            .sortedBy { it.value }
-            .joinToString(", ") { d -> d.name.take(3).lowercase().replaceFirstChar { it.uppercase() } }
-            .let { "On $it." }
-
-        is Cadence.TimesPerWeek -> if (habit.polarity == Polarity.NEGATIVE) {
-            "At most ${c.target}x per week. One cell is one week."
+    val strictness =
+        if (habit.strictness == Strictness.STRICT) {
+            "One miss breaks the chain."
         } else {
-            "At least ${c.target}x per week. One cell is one week."
+            "One miss is recoverable; two in a row breaks the chain."
         }
-    }
+    val cadence =
+        when (val c = habit.cadence) {
+            is Cadence.Daily -> "Every day."
+            is Cadence.SpecificDays ->
+                c.days
+                    .sortedBy { it.value }
+                    .joinToString(
+                        ", ",
+                    ) { d ->
+                        d.name
+                            .take(3)
+                            .lowercase()
+                            .replaceFirstChar { it.uppercase() }
+                    }.let { "On $it." }
+
+            is Cadence.TimesPerWeek ->
+                if (habit.polarity == Polarity.NEGATIVE) {
+                    "At most ${c.target}x per week. One cell is one week."
+                } else {
+                    "At least ${c.target}x per week. One cell is one week."
+                }
+        }
     return "$cadence $strictness"
 }

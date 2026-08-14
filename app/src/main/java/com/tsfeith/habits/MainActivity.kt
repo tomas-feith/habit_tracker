@@ -16,7 +16,6 @@ import com.tsfeith.habits.ui.HabitNavHost
 import com.tsfeith.habits.ui.theme.HabitTrackerTheme
 
 class MainActivity : ComponentActivity() {
-
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -36,10 +35,11 @@ class MainActivity : ComponentActivity() {
 
     private fun askForNotificationsIfNeeded() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
+        val granted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
         if (!granted) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 }

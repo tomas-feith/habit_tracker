@@ -1,10 +1,11 @@
 package com.tsfeith.habits.ui.edit
 
 import android.app.TimePickerDialog
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,10 +46,18 @@ import com.tsfeith.habits.domain.Strictness
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+private val DEFAULT_REMINDER = LocalTime.of(8, 0)
+private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditScreen(viewModel: EditViewModel, onDone: () -> Unit) {
+fun EditScreen(
+    viewModel: EditViewModel,
+    onDone: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -74,11 +83,12 @@ fun EditScreen(viewModel: EditViewModel, onDone: () -> Unit) {
         },
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             OutlinedTextField(
@@ -89,132 +99,10 @@ fun EditScreen(viewModel: EditViewModel, onDone: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Field(
-                title = "Kind",
-                help = when (state.polarity) {
-                    Polarity.POSITIVE -> "You log completions. An untouched day becomes a miss."
-                    Polarity.NEGATIVE -> "You log slips. An untouched day stays clean."
-                },
-            ) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    SegmentedButton(
-                        selected = state.polarity == Polarity.POSITIVE,
-                        onClick = { viewModel.setPolarity(Polarity.POSITIVE) },
-                        shape = SegmentedButtonDefaults.itemShape(0, 2),
-                    ) { Text("Build") }
-                    SegmentedButton(
-                        selected = state.polarity == Polarity.NEGATIVE,
-                        onClick = { viewModel.setPolarity(Polarity.NEGATIVE) },
-                        shape = SegmentedButtonDefaults.itemShape(1, 2),
-                    ) { Text("Break") }
-                }
-            }
-
-            Field(title = "How often", help = cadenceHelp(state)) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    CadenceChoice.entries.forEachIndexed { i, choice ->
-                        SegmentedButton(
-                            selected = state.cadenceChoice == choice,
-                            onClick = { viewModel.setCadence(choice) },
-                            shape = SegmentedButtonDefaults.itemShape(i, CadenceChoice.entries.size),
-                        ) {
-                            Text(
-                                when (choice) {
-                                    CadenceChoice.DAILY -> "Daily"
-                                    CadenceChoice.SPECIFIC_DAYS -> "Days"
-                                    CadenceChoice.TIMES_PER_WEEK -> "Weekly"
-                                }
-                            )
-                        }
-                    }
-                }
-
-                when (state.cadenceChoice) {
-                    CadenceChoice.SPECIFIC_DAYS -> {
-                        Spacer(Modifier.height(10.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            DayOfWeek.entries.forEach { day ->
-                                FilterChip(
-                                    selected = day in state.days,
-                                    onClick = { viewModel.toggleDay(day) },
-                                    label = {
-                                        Text(
-                                            day.name.take(3).lowercase()
-                                                .replaceFirstChar { it.uppercase() }
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-
-                    CadenceChoice.TIMES_PER_WEEK -> {
-                        Spacer(Modifier.height(10.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(onClick = { viewModel.setTarget(state.target - 1) }) {
-                                Text("-")
-                            }
-                            Text(
-                                text = "  ${state.target}x per week  ",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            OutlinedButton(onClick = { viewModel.setTarget(state.target + 1) }) {
-                                Text("+")
-                            }
-                        }
-                    }
-
-                    CadenceChoice.DAILY -> Unit
-                }
-            }
-
-            Field(
-                title = "After a miss",
-                help = when (state.strictness) {
-                    Strictness.STANDARD ->
-                        "Never miss twice: one miss is recoverable, two in a row breaks the chain."
-                    Strictness.STRICT ->
-                        "One miss breaks the chain immediately. For habits where the single " +
-                            "instance is the harm, not a data point."
-                },
-            ) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    SegmentedButton(
-                        selected = state.strictness == Strictness.STANDARD,
-                        onClick = { viewModel.setStrictness(Strictness.STANDARD) },
-                        shape = SegmentedButtonDefaults.itemShape(0, 2),
-                    ) { Text("Standard") }
-                    SegmentedButton(
-                        selected = state.strictness == Strictness.STRICT,
-                        onClick = { viewModel.setStrictness(Strictness.STRICT) },
-                        shape = SegmentedButtonDefaults.itemShape(1, 2),
-                    ) { Text("Strict") }
-                }
-            }
-
-            Field(title = "Reminder", help = "A single daily nudge. Optional.") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = {
-                        val initial = state.reminderTime ?: LocalTime.of(8, 0)
-                        TimePickerDialog(
-                            context,
-                            { _, h, m -> viewModel.setReminder(LocalTime.of(h, m)) },
-                            initial.hour,
-                            initial.minute,
-                            true,
-                        ).show()
-                    }) {
-                        Text(
-                            state.reminderTime
-                                ?.format(DateTimeFormatter.ofPattern("HH:mm"))
-                                ?: "Set a time"
-                        )
-                    }
-                    if (state.reminderTime != null) {
-                        TextButton(onClick = { viewModel.setReminder(null) }) { Text("Clear") }
-                    }
-                }
-            }
+            KindField(state, viewModel)
+            CadenceField(state, viewModel)
+            StrictnessField(state, viewModel)
+            ReminderField(state, viewModel, context)
 
             Button(
                 onClick = { viewModel.save(context) },
@@ -229,7 +117,177 @@ fun EditScreen(viewModel: EditViewModel, onDone: () -> Unit) {
 }
 
 @Composable
-private fun Field(title: String, help: String, content: @Composable () -> Unit) {
+private fun KindField(
+    state: EditUiState,
+    viewModel: EditViewModel,
+) {
+    Field(
+        title = "Kind",
+        help =
+            when (state.polarity) {
+                Polarity.POSITIVE -> "You log completions. An untouched day becomes a miss."
+                Polarity.NEGATIVE -> "You log slips. An untouched day stays clean."
+            },
+    ) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = state.polarity == Polarity.POSITIVE,
+                onClick = { viewModel.setPolarity(Polarity.POSITIVE) },
+                shape = SegmentedButtonDefaults.itemShape(0, 2),
+            ) { Text("Build") }
+            SegmentedButton(
+                selected = state.polarity == Polarity.NEGATIVE,
+                onClick = { viewModel.setPolarity(Polarity.NEGATIVE) },
+                shape = SegmentedButtonDefaults.itemShape(1, 2),
+            ) { Text("Break") }
+        }
+    }
+}
+
+@Composable
+private fun CadenceField(
+    state: EditUiState,
+    viewModel: EditViewModel,
+) {
+    Field(title = "How often", help = cadenceHelp(state)) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            CadenceChoice.entries.forEachIndexed { i, choice ->
+                SegmentedButton(
+                    selected = state.cadenceChoice == choice,
+                    onClick = { viewModel.setCadence(choice) },
+                    shape = SegmentedButtonDefaults.itemShape(i, CadenceChoice.entries.size),
+                ) {
+                    Text(
+                        when (choice) {
+                            CadenceChoice.DAILY -> "Daily"
+                            CadenceChoice.SPECIFIC_DAYS -> "Days"
+                            CadenceChoice.TIMES_PER_WEEK -> "Weekly"
+                        },
+                    )
+                }
+            }
+        }
+
+        when (state.cadenceChoice) {
+            CadenceChoice.SPECIFIC_DAYS -> {
+                Spacer(Modifier.height(10.dp))
+                DayPicker(state, viewModel)
+            }
+
+            CadenceChoice.TIMES_PER_WEEK -> {
+                Spacer(Modifier.height(10.dp))
+                TargetStepper(state, viewModel)
+            }
+
+            CadenceChoice.DAILY -> Unit
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DayPicker(
+    state: EditUiState,
+    viewModel: EditViewModel,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        DayOfWeek.entries.forEach { day ->
+            FilterChip(
+                selected = day in state.days,
+                onClick = { viewModel.toggleDay(day) },
+                label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TargetStepper(
+    state: EditUiState,
+    viewModel: EditViewModel,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(
+            onClick = { viewModel.setTarget(state.target - 1) },
+            enabled = state.target > MIN_WEEKLY_TARGET,
+        ) { Text("-") }
+        Text(
+            text = "  ${state.target}x per week  ",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        OutlinedButton(
+            onClick = { viewModel.setTarget(state.target + 1) },
+            enabled = state.target < MAX_WEEKLY_TARGET,
+        ) { Text("+") }
+    }
+}
+
+@Composable
+private fun StrictnessField(
+    state: EditUiState,
+    viewModel: EditViewModel,
+) {
+    Field(
+        title = "After a miss",
+        help =
+            when (state.strictness) {
+                Strictness.STANDARD ->
+                    "Never miss twice: one miss is recoverable, two in a row breaks the chain."
+
+                Strictness.STRICT ->
+                    "One miss breaks the chain immediately. For habits where the single " +
+                        "instance is the harm, not a data point."
+            },
+    ) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = state.strictness == Strictness.STANDARD,
+                onClick = { viewModel.setStrictness(Strictness.STANDARD) },
+                shape = SegmentedButtonDefaults.itemShape(0, 2),
+            ) { Text("Standard") }
+            SegmentedButton(
+                selected = state.strictness == Strictness.STRICT,
+                onClick = { viewModel.setStrictness(Strictness.STRICT) },
+                shape = SegmentedButtonDefaults.itemShape(1, 2),
+            ) { Text("Strict") }
+        }
+    }
+}
+
+@Composable
+private fun ReminderField(
+    state: EditUiState,
+    viewModel: EditViewModel,
+    context: Context,
+) {
+    Field(title = "Reminder", help = "A single daily nudge. Optional.") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = {
+                val initial = state.reminderTime ?: DEFAULT_REMINDER
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute -> viewModel.setReminder(LocalTime.of(hour, minute)) },
+                    initial.hour,
+                    initial.minute,
+                    true,
+                ).show()
+            }) {
+                Text(state.reminderTime?.format(TIME_FORMAT) ?: "Set a time")
+            }
+            if (state.reminderTime != null) {
+                TextButton(onClick = { viewModel.setReminder(null) }) { Text("Clear") }
+            }
+        }
+    }
+}
+
+/** A labelled control with a line of explanatory text underneath. */
+@Composable
+private fun Field(
+    title: String,
+    help: String,
+    content: @Composable () -> Unit,
+) {
     Column {
         Text(
             text = title,
@@ -247,13 +305,18 @@ private fun Field(title: String, help: String, content: @Composable () -> Unit) 
     }
 }
 
-private fun cadenceHelp(state: EditUiState): String = when (state.cadenceChoice) {
-    CadenceChoice.DAILY -> "Every day counts. One mosaic cell is one day."
-    CadenceChoice.SPECIFIC_DAYS ->
-        "Only the chosen days count; the rest show as off, not as failures."
-    CadenceChoice.TIMES_PER_WEEK -> if (state.polarity == Polarity.NEGATIVE) {
-        "An allowance of ${state.target} per week. One mosaic cell is one week."
-    } else {
-        "Any ${state.target} days in the week. No single day can fail - one cell is one week."
+private fun cadenceHelp(state: EditUiState): String =
+    when (state.cadenceChoice) {
+        CadenceChoice.DAILY -> "Every day counts. One mosaic cell is one day."
+
+        CadenceChoice.SPECIFIC_DAYS ->
+            "Only the chosen days count; the rest show as off, not as failures."
+
+        CadenceChoice.TIMES_PER_WEEK ->
+            if (state.polarity == Polarity.NEGATIVE) {
+                "An allowance of ${state.target} per week. One mosaic cell is one week."
+            } else {
+                "Any ${state.target} days in the week. No single day can fail - " +
+                    "one cell is one week."
+            }
     }
-}

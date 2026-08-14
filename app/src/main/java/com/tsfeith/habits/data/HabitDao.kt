@@ -5,13 +5,13 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
 @Dao
 interface HabitDao {
-
     @Query("SELECT * FROM habits WHERE archivedOn IS NULL ORDER BY sortOrder, id")
     fun observeActiveHabits(): Flow<List<HabitEntity>>
 
@@ -40,21 +40,36 @@ interface HabitDao {
     fun observeEntriesFor(habitId: Long): Flow<List<EntryEntity>>
 
     @Query("SELECT * FROM entries WHERE habitId = :habitId AND date = :date")
-    suspend fun getEntry(habitId: Long, date: LocalDate): EntryEntity?
+    suspend fun getEntry(
+        habitId: Long,
+        date: LocalDate,
+    ): EntryEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertEntry(entry: EntryEntity)
 
     @Query("DELETE FROM entries WHERE habitId = :habitId AND date = :date")
-    suspend fun deleteEntry(habitId: Long, date: LocalDate)
+    suspend fun deleteEntry(
+        habitId: Long,
+        date: LocalDate,
+    )
 
     /**
      * Records one event, or removes it if [toggleOff] and an event already exists.
      *
      * Daily habits toggle; times-per-week habits accumulate, so a fourth workout in a
      * 3x week still records rather than silently undoing the third.
+     *
+     * Transactional because it reads the current count before writing it back; without
+     * that, two quick taps could both read zero and the second would lose the first.
      */
-    suspend fun logEvent(habitId: Long, date: LocalDate, toggleOff: Boolean, delta: Int = 1) {
+    @Transaction
+    suspend fun logEvent(
+        habitId: Long,
+        date: LocalDate,
+        toggleOff: Boolean,
+        delta: Int = 1,
+    ) {
         val existing = getEntry(habitId, date)
         val next = (existing?.count ?: 0) + delta
         when {

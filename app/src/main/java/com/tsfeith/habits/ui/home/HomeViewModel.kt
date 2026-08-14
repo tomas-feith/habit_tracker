@@ -43,8 +43,12 @@ data class HabitRowState(
      * day doesn't wipe the board and take the motivation with it.
      */
     val headlineCount: Int
-        get() = if (habit.strictness == Strictness.STRICT) stats.currentStreak
-        else stats.chainLength
+        get() =
+            if (habit.strictness == Strictness.STRICT) {
+                stats.currentStreak
+            } else {
+                stats.chainLength
+            }
 }
 
 data class HomeUiState(
@@ -56,40 +60,44 @@ data class HomeUiState(
     val atRisk: List<HabitRowState> get() = rows.filter { it.stats.atRisk }
 }
 
-class HomeViewModel(private val repository: HabitRepository) : ViewModel() {
-
+class HomeViewModel(
+    private val repository: HabitRepository,
+) : ViewModel() {
     /** Bumped on resume so the app rolls over correctly if left open past midnight. */
     private val today = MutableStateFlow(LocalDate.now())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<HomeUiState> = today
-        .flatMapLatest { day ->
-            // All of it, not a trailing window: lifetime stats are computed from
-            // habit.createdOn, so a windowed query would invent misses for any habit
-            // older than the window. A personal tracker's entry table stays tiny.
-            repository.observeHabitsWithEntries(LocalDate.EPOCH)
-                .map { pairs -> buildState(pairs, day) }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+    val uiState: StateFlow<HomeUiState> =
+        today
+            .flatMapLatest { day ->
+                // All of it, not a trailing window: lifetime stats are computed from
+                // habit.createdOn, so a windowed query would invent misses for any habit
+                // older than the window. A personal tracker's entry table stays tiny.
+                repository
+                    .observeHabitsWithEntries(BEGINNING_OF_TIME)
+                    .map { pairs -> buildState(pairs, day) }
+            }.stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                HomeUiState(),
+            )
 
     private fun buildState(
         pairs: List<Pair<Habit, List<Entry>>>,
         day: LocalDate,
     ): HomeUiState {
-        val rows = pairs.map { (habit, entries) ->
-            val cells = HabitEvaluator.cells(
-                habit = habit,
-                entries = entries,
-                from = HabitEvaluator.inlineWindowStart(habit, day),
-                today = day,
-            )
-            HabitRowState(
-                habit = habit,
-                cells = cells,
-                stats = HabitEvaluator.stats(habit, entries, day),
-                currentCount = cells.lastOrNull()?.count ?: 0,
-            )
-        }
+        val rows =
+            pairs.map { (habit, entries) ->
+                // Evaluate the whole history once, then slice. Evaluating the visible window
+                // directly would restart the never-miss-twice counter at the window edge.
+                val timeline = HabitEvaluator.timeline(habit, entries, day)
+                HabitRowState(
+                    habit = habit,
+                    cells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
+                    stats = timeline.stats,
+                    currentCount = timeline.currentCount,
+                )
+            }
         return HomeUiState(rows = rows, today = day, loaded = true)
     }
 
@@ -97,21 +105,36 @@ class HomeViewModel(private val repository: HabitRepository) : ViewModel() {
         today.value = LocalDate.now()
     }
 
-    fun logEvent(habit: Habit) = viewModelScope.launch {
-        repository.logEvent(habit, today.value)
-    }
+    fun logEvent(habit: Habit) =
+        viewModelScope.launch {
+            repository.logEvent(habit, today.value)
+        }
 
-    fun removeEvent(habit: Habit) = viewModelScope.launch {
-        repository.removeEvent(habit, today.value)
-    }
+    fun removeEvent(habit: Habit) =
+        viewModelScope.launch {
+            repository.removeEvent(habit, today.value)
+        }
 
     companion object {
-        val Factory = viewModelFactory {
-            initializer {
-                val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
-                        as HabitApplication
-                HomeViewModel(app.repository)
+        /**
+         * Lower bound for "every entry ever".
+         *
+         * Deliberately not `LocalDate.EPOCH`, which is API 33 and would crash on
+         * anything older - this app supports API 26.
+         */
+        private val BEGINNING_OF_TIME: LocalDate = LocalDate.ofEpochDay(0)
+
+        /** How long the flow stays warm after the screen goes away. */
+        private const val STOP_TIMEOUT_MS = 5_000L
+
+        val Factory =
+            viewModelFactory {
+                initializer {
+                    val app =
+                        this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                            as HabitApplication
+                    HomeViewModel(app.repository)
+                }
             }
-        }
     }
 }

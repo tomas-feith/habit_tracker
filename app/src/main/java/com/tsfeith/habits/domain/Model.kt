@@ -37,7 +37,9 @@ sealed interface Cadence {
     data object Daily : Cadence
 
     /** Only the named days count; the rest render as "not scheduled". */
-    data class SpecificDays(val days: Set<DayOfWeek>) : Cadence
+    data class SpecificDays(
+        val days: Set<DayOfWeek>,
+    ) : Cadence
 
     /**
      * The week is the unit of success, not the day. No individual day can be a failure.
@@ -45,7 +47,9 @@ sealed interface Cadence {
      * For a [Polarity.POSITIVE] habit the target is a floor ("workout at least 3x/week");
      * for a [Polarity.NEGATIVE] habit it is an allowance ("eat out at most 2x/week").
      */
-    data class TimesPerWeek(val target: Int) : Cadence
+    data class TimesPerWeek(
+        val target: Int,
+    ) : Cadence
 }
 
 data class Habit(
@@ -124,19 +128,15 @@ data class HabitStats(
      * "days since" is the whole point.
      */
     val currentStreak: Int,
-
     /**
      * Periods back to the last *broken* chain, tolerating isolated single misses.
      * The headline for [Strictness.STANDARD] habits, so one sick day doesn't wipe the
      * board and take your motivation with it.
      */
     val chainLength: Int,
-
     val longestStreak: Int,
-
     /** Good periods as a fraction of scheduled, settled periods. */
     val completionRate: Float,
-
     /**
      * True when the last settled period was a miss and one more would break the chain.
      * Drives the "never miss twice" banner. Always false for strict habits, where a miss

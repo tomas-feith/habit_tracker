@@ -56,18 +56,22 @@ fun HabitNavHost() {
     }
 }
 
-private fun detailFactory(habitId: Long): ViewModelProvider.Factory = viewModelFactory {
-    initializer {
-        val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
-                as HabitApplication
-        DetailViewModel(app.repository, habitId)
+private fun detailFactory(habitId: Long): ViewModelProvider.Factory =
+    viewModelFactory {
+        initializer {
+            val app =
+                this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                    as HabitApplication
+            DetailViewModel(app.repository, habitId)
+        }
     }
-}
 
-private fun editFactory(habitId: Long): ViewModelProvider.Factory = viewModelFactory {
-    initializer {
-        val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
-                as HabitApplication
-        EditViewModel(app.repository, habitId)
+private fun editFactory(habitId: Long): ViewModelProvider.Factory =
+    viewModelFactory {
+        initializer {
+            val app =
+                this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
+                    as HabitApplication
+            EditViewModel(app.repository, habitId)
+        }
     }
-}

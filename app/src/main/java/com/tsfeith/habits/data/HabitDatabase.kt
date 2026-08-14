@@ -32,11 +32,13 @@ abstract class HabitDatabase : RoomDatabase() {
 
         fun get(context: Context): HabitDatabase =
             instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    HabitDatabase::class.java,
-                    "habits.db",
-                ).build().also { instance = it }
+                instance ?: Room
+                    .databaseBuilder(
+                        context.applicationContext,
+                        HabitDatabase::class.java,
+                        "habits.db",
+                    ).build()
+                    .also { instance = it }
             }
     }
 }
