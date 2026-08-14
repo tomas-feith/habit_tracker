@@ -63,6 +63,9 @@ class HabitRepository(
         date: LocalDate,
     ) = dao.logEvent(habit.id, date, toggleOff = false, delta = -1)
 
+    /** Persists a new habit ordering, given the ids in their final order. */
+    suspend fun applyOrder(idsInOrder: List<Long>) = dao.applyOrder(idsInOrder)
+
     suspend fun getHabit(id: Long): Habit? = dao.getHabit(id)?.toDomain()
 
     suspend fun habitsWithReminders(): List<Habit> = dao.habitsWithReminders().map { it.toDomain() }

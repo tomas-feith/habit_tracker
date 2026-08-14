@@ -18,6 +18,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -49,6 +50,13 @@ data class HabitRowState(
             } else {
                 stats.chainLength
             }
+
+    /** "days" or "weeks", singular when the count is one. */
+    val headlineUnit: String
+        get() {
+            val unit = if (habit.isWeekly) "week" else "day"
+            return if (headlineCount == 1) unit else "${unit}s"
+        }
 }
 
 data class HomeUiState(
@@ -66,25 +74,37 @@ class HomeViewModel(
     /** Bumped on resume so the app rolls over correctly if left open past midnight. */
     private val today = MutableStateFlow(LocalDate.now())
 
+    /**
+     * Habit ids in the order the user is currently dragging them into.
+     *
+     * Applied optimistically so the list follows the finger, and only written to the
+     * database when the drag ends - persisting on every swap would round-trip through
+     * Room mid-gesture and fight the animation.
+     */
+    private val orderOverride = MutableStateFlow<List<Long>?>(null)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<HomeUiState> =
-        today
-            .flatMapLatest { day ->
+        combine(
+            today.flatMapLatest { day ->
                 // All of it, not a trailing window: lifetime stats are computed from
                 // habit.createdOn, so a windowed query would invent misses for any habit
                 // older than the window. A personal tracker's entry table stays tiny.
-                repository
-                    .observeHabitsWithEntries(BEGINNING_OF_TIME)
-                    .map { pairs -> buildState(pairs, day) }
-            }.stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-                HomeUiState(),
-            )
+                repository.observeHabitsWithEntries(BEGINNING_OF_TIME).map { it to day }
+            },
+            orderOverride,
+        ) { (pairs, day), order ->
+            buildState(pairs, day, order)
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            HomeUiState(),
+        )
 
     private fun buildState(
         pairs: List<Pair<Habit, List<Entry>>>,
         day: LocalDate,
+        order: List<Long>?,
     ): HomeUiState {
         val rows =
             pairs.map { (habit, entries) ->
@@ -98,7 +118,15 @@ class HomeViewModel(
                     currentCount = timeline.currentCount,
                 )
             }
-        return HomeUiState(rows = rows, today = day, loaded = true)
+        return HomeUiState(rows = rows.inOrder(order), today = day, loaded = true)
+    }
+
+    /** Habits not named in [order] (a brand new one, say) keep their stored position. */
+    private fun List<HabitRowState>.inOrder(order: List<Long>?): List<HabitRowState> {
+        if (order == null) return this
+        return sortedBy { row ->
+            order.indexOf(row.habit.id).takeIf { it >= 0 } ?: Int.MAX_VALUE
+        }
     }
 
     fun refreshDate() {
@@ -113,6 +141,26 @@ class HomeViewModel(
     fun removeEvent(habit: Habit) =
         viewModelScope.launch {
             repository.removeEvent(habit, today.value)
+        }
+
+    /** Moves the dragged habit to the position currently held by [toKey]. */
+    fun moveHabit(
+        fromKey: Long,
+        toKey: Long,
+    ) {
+        val current = orderOverride.value ?: uiState.value.rows.map { it.habit.id }
+        val from = current.indexOf(fromKey)
+        val to = current.indexOf(toKey)
+        if (from < 0 || to < 0 || from == to) return
+
+        orderOverride.value =
+            current.toMutableList().apply { add(to, removeAt(from)) }
+    }
+
+    /** Writes the dragged order to the database once the gesture finishes. */
+    fun commitOrder() =
+        viewModelScope.launch {
+            orderOverride.value?.let { repository.applyOrder(it) }
         }
 
     companion object {

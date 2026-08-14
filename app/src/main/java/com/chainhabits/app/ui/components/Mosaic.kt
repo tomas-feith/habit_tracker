@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
@@ -26,18 +27,22 @@ import com.chainhabits.app.domain.CellState
 import com.chainhabits.app.ui.theme.MosaicColors
 import com.chainhabits.app.ui.theme.MosaicTheme
 
+private const val DAYS_PER_WEEK = 7
+
 /**
  * A horizontal run of mosaic cells, oldest on the left and now on the right.
  *
- * One cell is one day for daily habits and one week for times-per-week habits; the
- * evaluator has already decided which, so this just draws what it is given.
+ * Consecutive good periods are drawn as **one unbroken bar** rather than separate squares.
+ * The habit is "don't break the chain", so the chain should look like a chain: an intact
+ * run reads as a single length, and a miss punches a visible gap through it. Discrete
+ * per-day cells live on the detail screen, where counting matters more than feeling.
  */
 @Composable
 fun MosaicStrip(
     cells: List<Cell>,
     modifier: Modifier = Modifier,
-    cellHeight: Dp = 14.dp,
-    gap: Dp = 2.dp,
+    cellHeight: Dp = 18.dp,
+    gap: Dp = 3.dp,
 ) {
     val colors = MosaicTheme.colors
     // A bare Canvas is invisible to screen readers, which would hide the app's entire
@@ -53,36 +58,37 @@ fun MosaicStrip(
     ) {
         if (cells.isEmpty()) return@Canvas
         val gapPx = gap.toPx()
-        val cellWidth =
-            ((size.width - gapPx * (cells.size - 1)) / cells.size)
-                .coerceAtLeast(1f)
+        val slot = size.width / cells.size
+        val width = (slot - gapPx).coerceAtLeast(1f)
+        val radius = CornerRadius(size.height * 0.35f)
 
-        cells.forEachIndexed { i, cell ->
-            drawCell(
-                state = cell.state,
-                colors = colors,
-                topLeft = Offset(i * (cellWidth + gapPx), 0f),
-                size = Size(cellWidth, size.height),
-            )
+        var i = 0
+        while (i < cells.size) {
+            if (cells[i].state == CellState.DONE) {
+                // Extend across every following good period so the run becomes one bar.
+                var end = i
+                while (end + 1 < cells.size && cells[end + 1].state == CellState.DONE) end++
+
+                val left = i * slot
+                val right = end * slot + width
+                drawRoundRect(
+                    brush =
+                        Brush.horizontalGradient(
+                            colors = listOf(colors.doneSoft, colors.done),
+                            startX = left,
+                            endX = right,
+                        ),
+                    topLeft = Offset(left, 0f),
+                    size = Size(right - left, size.height),
+                    cornerRadius = radius,
+                )
+                i = end + 1
+            } else {
+                drawCell(cells[i].state, colors, Offset(i * slot, 0f), Size(width, size.height))
+                i++
+            }
         }
     }
-}
-
-private const val DAYS_PER_WEEK = 7
-
-/** A spoken summary of a run of cells, for screen readers. */
-private fun summarise(cells: List<Cell>): String {
-    if (cells.isEmpty()) return "No history yet"
-
-    val done = cells.count { it.state == CellState.DONE }
-    val missed =
-        cells.count {
-            it.state == CellState.MISSED_ONCE || it.state == CellState.BROKEN
-        }
-    val judged = done + missed
-    if (judged == 0) return "Nothing recorded yet over the last ${cells.size} periods"
-
-    return "$done good and $missed missed over the last $judged recorded periods"
 }
 
 /** A single cell, drawn the same way everywhere so the language stays consistent. */
@@ -104,7 +110,7 @@ private fun DrawScope.drawCell(
     topLeft: Offset,
     size: Size,
 ) {
-    val radius = CornerRadius(size.minDimension * 0.22f)
+    val radius = CornerRadius(size.minDimension * 0.32f)
     when (state) {
         CellState.DONE -> {
             drawRoundRect(colors.done, topLeft, size, radius)
@@ -121,14 +127,14 @@ private fun DrawScope.drawCell(
                 topLeft = topLeft,
                 size = size,
                 cornerRadius = radius,
-                style = Stroke(width = size.minDimension * 0.16f),
+                style = Stroke(width = size.minDimension * 0.18f),
             )
         }
 
         // Carries no judgement - a weekly habit shouldn't look like six daily failures.
         CellState.NOT_SCHEDULED -> {
-            val thickness = size.height * 0.12f
-            val inset = size.width * 0.25f
+            val thickness = size.height * 0.14f
+            val inset = size.width * 0.22f
             drawRoundRect(
                 color = colors.notScheduled,
                 topLeft = Offset(topLeft.x + inset, topLeft.y + (size.height - thickness) / 2f),
@@ -140,14 +146,29 @@ private fun DrawScope.drawCell(
         // The current period, still open. Outlined so "settled" reads apart from "in play".
         CellState.PENDING -> {
             drawRoundRect(
-                color = colors.todayOutline.copy(alpha = 0.55f),
+                color = colors.todayOutline,
                 topLeft = topLeft,
                 size = size,
                 cornerRadius = radius,
-                style = Stroke(width = size.minDimension * 0.12f),
+                style = Stroke(width = size.minDimension * 0.14f),
             )
         }
     }
+}
+
+/** A spoken summary of a run of cells, for screen readers. */
+private fun summarise(cells: List<Cell>): String {
+    if (cells.isEmpty()) return "No history yet"
+
+    val done = cells.count { it.state == CellState.DONE }
+    val missed =
+        cells.count {
+            it.state == CellState.MISSED_ONCE || it.state == CellState.BROKEN
+        }
+    val judged = done + missed
+    if (judged == 0) return "Nothing recorded yet over the last ${cells.size} periods"
+
+    return "$done good and $missed missed over the last $judged recorded periods"
 }
 
 /**
@@ -166,7 +187,7 @@ fun QuotaPips(
     val colors = MosaicTheme.colors
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(target) { i ->
@@ -176,7 +197,7 @@ fun QuotaPips(
                 } else {
                     drawCircle(
                         color = colors.notScheduled,
-                        style = Stroke(width = size.minDimension * 0.14f),
+                        style = Stroke(width = size.minDimension * 0.16f),
                     )
                 }
             }
@@ -193,8 +214,8 @@ fun QuotaPips(
 /**
  * A full-year heatmap: seven rows (Mon..Sun) by however many week columns fit.
  *
- * Used on the habit detail screen, where day-level detail is worth the space even for
- * weekly habits whose inline strip is drawn in weeks.
+ * Kept as discrete cells rather than a connected chain - this screen is for counting and
+ * scanning, where the home strip is for feeling the streak.
  */
 @Composable
 fun YearMosaic(
@@ -212,8 +233,8 @@ fun YearMosaic(
             cells
                 .first()
                 .date.dayOfWeek.value + 6
-        ) % 7
-    val weeks = (leading + cells.size + 6) / 7
+        ) % DAYS_PER_WEEK
+    val weeks = (leading + cells.size + DAYS_PER_WEEK - 1) / DAYS_PER_WEEK
     val description = remember(cells) { summarise(cells) }
 
     Canvas(

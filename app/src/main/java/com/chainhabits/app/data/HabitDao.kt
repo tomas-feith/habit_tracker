@@ -27,6 +27,23 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertHabit(habit: HabitEntity): Long
 
+    @Query("UPDATE habits SET sortOrder = :order WHERE id = :id")
+    suspend fun setSortOrder(
+        id: Long,
+        order: Int,
+    )
+
+    /**
+     * Rewrites the whole ordering in one transaction.
+     *
+     * Writing positions one at a time would let the list observer emit halfway through
+     * and briefly render habits in a nonsensical order.
+     */
+    @Transaction
+    suspend fun applyOrder(idsInOrder: List<Long>) {
+        idsInOrder.forEachIndexed { index, id -> setSortOrder(id, index) }
+    }
+
     @Update
     suspend fun updateHabit(habit: HabitEntity)
 
