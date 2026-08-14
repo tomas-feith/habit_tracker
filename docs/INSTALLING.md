@@ -98,6 +98,10 @@ yours if you want to be sure:
 keytool -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -storepass android -alias androiddebugkey
 ```
 
+`keytool` ships with the JDK and is often not on `PATH`. If it is not found, call it as
+`"$env:JAVA_HOME\bin\keytool.exe"`, or from the JDK bundled with Android Studio at
+`jbr\bin\keytool.exe` inside the Android Studio install directory.
+
 The risk is **loss**. That file sits outside this repository, outside version control, and
 outside most backup setups. Reinstalling Windows, wiping the user profile, moving to a new
 machine, or letting the tooling regenerate it all end the same way: no more updates.
@@ -148,7 +152,7 @@ read it back.
 | Prompt never appears | Set the USB mode to **File transfer** from the notification shade. |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | The installed app is signed with a different key. See [The signing key](#the-signing-key). Uninstalling fixes it but destroys the database. |
 | `INSTALL_FAILED_VERSION_DOWNGRADE` | The APK has a lower `versionCode` than what is installed. Bump `versionCode` in `app/build.gradle.kts`. |
-| `INSTALL_FAILED_USER_RESTRICTED` | Some OEM skins (notably Xiaomi and Samsung) require "Install via USB" to be enabled in Developer options. |
+| `INSTALL_FAILED_USER_RESTRICTED` | Some OEM skins, Xiaomi's MIUI in particular, require "Install via USB" to be enabled in Developer options. Stock Android and Samsung One UI do not. |
 | App installs but instantly closes | Check `adb logcat -b crash`. A `minSdk` mismatch is not possible here (26), so it is a real crash worth reporting. |
 
 ## What happens to your data
