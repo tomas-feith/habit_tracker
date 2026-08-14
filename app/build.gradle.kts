@@ -62,6 +62,10 @@ android {
                 // Fires on lint jars shipped inside androidx.navigation, which we can
                 // neither fix nor usefully act on.
                 "ObsoleteLintCustomCheck",
+                // Enforces Play Store target-API deadlines. This app is sideloaded and
+                // never published, so the deadline does not apply. Raising targetSdk
+                // past 34 would also mean moving off AGP 8.5, which supports up to 34.
+                "OldTargetApi",
             )
     }
 
