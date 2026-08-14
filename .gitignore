@@ -28,3 +28,7 @@ secrets.properties
 
 .DS_Store
 Thumbs.db
+
+# Crash debris from MSYS/Cygwin tooling on Windows.
+*.stackdump
+core

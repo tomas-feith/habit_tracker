@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and below (fullBackupContent).
+
+  The habit database is the only thing worth keeping and the only thing the app has:
+  losing it means losing months of history with no way to rebuild it.
+
+  Listing any <include> makes the rules exclusive - everything not named here is left out
+  automatically, so there is no need to exclude caches or preferences explicitly.
+-->
+<full-backup-content>
+    <include domain="database" path="habits.db" />
+    <include domain="database" path="habits.db-wal" />
+    <include domain="database" path="habits.db-shm" />
+</full-backup-content>

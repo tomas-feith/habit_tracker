@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (dataExtractionRules).
+
+  Two transports, deliberately treated the same because the payload is the same:
+
+  * cloud-backup goes to your Google account. Opted into on purpose - this app is the
+    only copy of your history, so without it a lost phone loses everything.
+  * device-transfer is a direct phone-to-phone copy during setup.
+
+  A habit tracker can hold genuinely private material, so this file exists to make the
+  choice explicit and reviewable rather than inheriting the platform default. Naming any
+  <include> makes the rules exclusive: the database is carried, nothing else is.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="habits.db" />
+        <include domain="database" path="habits.db-wal" />
+        <include domain="database" path="habits.db-shm" />
+    </cloud-backup>
+
+    <device-transfer>
+        <include domain="database" path="habits.db" />
+        <include domain="database" path="habits.db-wal" />
+        <include domain="database" path="habits.db-shm" />
+    </device-transfer>
+</data-extraction-rules>

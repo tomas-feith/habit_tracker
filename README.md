@@ -3,7 +3,9 @@
 [![CI](https://github.com/tomas-feith/habit_tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/tomas-feith/habit_tracker/actions/workflows/ci.yml)
 
 A personal Android habit tracker built around the ideas in James Clear's *Atomic Habits*.
-Native Kotlin + Jetpack Compose, local-only: no account, no sync, no network permission.
+Native Kotlin + Jetpack Compose. No account, no server, and no `INTERNET` permission — the
+app itself never talks to anything. Your history is backed up by Android to your own Google
+account; see [Your data](#your-data) for exactly what that means and how to turn it off.
 
 The app is built around a visible chain of cells (a "mosaic") so progress is obvious at the
 moment you decide whether to act. Habit tracking works, per Clear, because it makes an
@@ -111,11 +113,33 @@ at the window's left edge and paint a broken chain as merely amber. Slice with
 Because the domain layer takes `today` as a parameter and never reads the clock, every
 rollover rule is testable without mocking time.
 
+## Your data
+
+Everything lives in one SQLite database on the device. The app has no `INTERNET`
+permission, so it cannot send your habits anywhere itself.
+
+It does opt into **Android's backup**, which is a platform feature rather than something
+the app runs: the system copies the database to your Google account, and restores it when
+you set up a new phone. This is deliberate — the app is the only copy of your history, and
+without it a lost phone loses everything.
+
+The trade-off is real and worth stating plainly: a habit tracker can hold private material,
+and backup means an encrypted copy sits in Google Drive rather than only on your device.
+Exactly what is included is spelled out in
+[`data_extraction_rules.xml`](app/src/main/res/xml/data_extraction_rules.xml) (Android 12+)
+and [`backup_rules.xml`](app/src/main/res/xml/backup_rules.xml) (Android 11 and below) —
+the habit database and nothing else.
+
+To make the app genuinely device-only, set `android:allowBackup="false"` in
+[`AndroidManifest.xml`](app/src/main/AndroidManifest.xml). Uninstalling then destroys your
+history permanently.
+
 ## Database migrations
 
-The database holds the **only** copy of your history — no server, no sync. Destructive
-fallback is therefore deliberately never enabled: a missing migration must fail loudly in
-testing rather than quietly wipe months of tracking on a real device.
+The database holds your whole history, and Android's backup restores that same database
+rather than rebuilding it from anywhere — so a bad migration corrupts the backup too.
+Destructive fallback is therefore deliberately never enabled: a missing migration must fail
+loudly in testing rather than quietly wipe months of tracking on a real device.
 
 To change the schema:
 
@@ -167,4 +191,5 @@ git config core.hooksPath .githooks
   07:12, and this avoids the exact-alarm permission and is much kinder to the battery.
 - **No UI tests.** The domain layer is thoroughly unit-tested and migrations are covered on
   device, but the Compose screens are verified by eye rather than automatically.
-- **No backup or export.** Uninstalling the app destroys the history.
+- **No manual export.** Android's backup covers device loss and phone-to-phone transfer,
+  but there is no way to get your history out as a file you own.

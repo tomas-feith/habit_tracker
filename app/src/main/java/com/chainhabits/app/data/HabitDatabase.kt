@@ -35,10 +35,10 @@ abstract class HabitDatabase : RoomDatabase() {
         /**
          * Schema migrations, oldest first.
          *
-         * This app holds the only copy of your history - there is no server to re-sync
-         * from - so destructive fallback is deliberately never enabled. A missing
-         * migration must fail loudly in testing rather than quietly wipe months of data
-         * on a real device.
+         * Android's backup restores this same database rather than rebuilding it from a
+         * server, so a bad migration corrupts the backup too. Destructive fallback is
+         * therefore deliberately never enabled: a missing migration must fail loudly in
+         * testing rather than quietly wipe months of data on a real device.
          *
          * To add one:
          *  1. Change the entities and bump [VERSION].
