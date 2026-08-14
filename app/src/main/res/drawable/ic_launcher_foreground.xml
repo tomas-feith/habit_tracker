@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A 3x3 mosaic of cells with the last one filled: the app's core metaphor. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M34,34h12v12h-12z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M48,34h12v12h-12z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.20" android:pathData="M62,34h12v12h-12z" />
+
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M34,48h12v12h-12z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.20" android:pathData="M48,48h12v12h-12z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M62,48h12v12h-12z" />
+
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M34,62h12v12h-12z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M48,62h12v12h-12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M62,62h12v12h-12z" />
+</vector>
