@@ -23,6 +23,8 @@ enum class CadenceType { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 data class HabitEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
+    /** Free text: why the habit matters, or what counts as done. Null when unset. */
+    val note: String?,
     val polarity: Polarity,
     val strictness: Strictness,
     val cadenceType: CadenceType,
@@ -94,6 +96,7 @@ fun HabitEntity.toDomain(): Habit =
     Habit(
         id = id,
         name = name,
+        note = note,
         polarity = polarity,
         strictness = strictness,
         cadence =
@@ -115,6 +118,8 @@ fun Habit.toEntity(): HabitEntity =
     HabitEntity(
         id = id,
         name = name,
+        // Blank and null mean the same thing to the reader; store one of them.
+        note = note?.trim()?.ifEmpty { null },
         polarity = polarity,
         strictness = strictness,
         cadenceType =

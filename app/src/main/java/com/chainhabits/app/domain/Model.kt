@@ -55,6 +55,13 @@ sealed interface Cadence {
 data class Habit(
     val id: Long = 0,
     val name: String,
+    /**
+     * Free text the user attached to the habit: why it matters, or what counts as done.
+     *
+     * Null rather than empty when absent, so "never written" and "written then cleared"
+     * collapse to one state and the UI only has one case to hide.
+     */
+    val note: String? = null,
     val polarity: Polarity = Polarity.POSITIVE,
     val strictness: Strictness = Strictness.STANDARD,
     val cadence: Cadence = Cadence.Daily,

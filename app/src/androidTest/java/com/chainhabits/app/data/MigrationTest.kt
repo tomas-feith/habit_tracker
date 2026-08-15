@@ -102,6 +102,45 @@ class MigrationTest {
     }
 
     /**
+     * Adding `note` must leave every existing habit intact, with a null note.
+     *
+     * An `ALTER TABLE ... ADD COLUMN` is the one migration shape that looks too trivial to
+     * test, which is exactly why it gets one: the failure mode is not the column being
+     * absent, it is the column arriving NOT NULL (or with a default) and the upgrade
+     * aborting on a device holding the only copy of the user's history.
+     */
+    @Test
+    @Throws(IOException::class)
+    fun migrate2To3AddsANullNote() {
+        helper.createDatabase(TEST_DB, 2).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO habits
+                    (id, name, polarity, strictness, cadenceType, cadenceDays,
+                     cadenceTarget, reminder_minute_of_day, createdOn, archivedOn, sortOrder)
+                VALUES (1, 'Read', 'POSITIVE', 'STANDARD', 'DAILY', 0, 1, NULL, 20000, NULL, 0)
+                """.trimIndent(),
+            )
+        }
+
+        val db =
+            helper.runMigrationsAndValidate(
+                TEST_DB,
+                3,
+                true,
+                *HabitDatabase.MIGRATIONS.toTypedArray(),
+            )
+
+        db.use {
+            it.query("SELECT name, note FROM habits WHERE id = 1").use { cursor ->
+                assertTrue("habit row lost in migration", cursor.moveToFirst())
+                assertEquals("Read", cursor.getString(0))
+                assertTrue("an existing habit must migrate to no note", cursor.isNull(1))
+            }
+        }
+    }
+
+    /**
      * Every migration in [HabitDatabase.MIGRATIONS] must be contiguous and land exactly
      * on the declared version. A gap here would fail at runtime on a real upgrade.
      */

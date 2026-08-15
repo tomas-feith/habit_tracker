@@ -25,6 +25,12 @@ const val MIN_WEEKLY_TARGET = 1
 /** Above seven a weekly target is just a daily habit with extra steps. */
 const val MAX_WEEKLY_TARGET = 7
 
+/**
+ * A note is a reminder of intent, not a journal - and the detail screen renders it in full
+ * with no truncation, so an unbounded paste would push the mosaic off the screen.
+ */
+const val MAX_NOTE_LENGTH = 280
+
 enum class CadenceChoice { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 
 /**
@@ -37,6 +43,7 @@ enum class CadenceChoice { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
  */
 private object DraftKeys {
     const val NAME = "draft.name"
+    const val NOTE = "draft.note"
     const val POLARITY = "draft.polarity"
     const val STRICTNESS = "draft.strictness"
     const val CADENCE = "draft.cadence"
@@ -54,6 +61,7 @@ private fun SavedStateHandle.hasDraft(): Boolean = contains(DraftKeys.NAME)
 
 private fun SavedStateHandle.writeDraft(state: EditUiState) {
     this[DraftKeys.NAME] = state.name
+    this[DraftKeys.NOTE] = state.note
     this[DraftKeys.POLARITY] = state.polarity.name
     this[DraftKeys.STRICTNESS] = state.strictness.name
     this[DraftKeys.CADENCE] = state.cadenceChoice.name
@@ -76,6 +84,7 @@ private fun SavedStateHandle.readDraft(): EditUiState? {
     return EditUiState(
         id = get<Long>(DraftKeys.ID) ?: default.id,
         name = name,
+        note = get<String>(DraftKeys.NOTE) ?: default.note,
         polarity = get<String>(DraftKeys.POLARITY)?.let(Polarity::valueOf) ?: default.polarity,
         strictness =
             get<String>(DraftKeys.STRICTNESS)?.let(Strictness::valueOf) ?: default.strictness,
@@ -93,6 +102,8 @@ private fun SavedStateHandle.readDraft(): EditUiState? {
 data class EditUiState(
     val id: Long = 0,
     val name: String = "",
+    /** Always a plain String in the form; only the saved [Habit] distinguishes null. */
+    val note: String = "",
     val polarity: Polarity = Polarity.POSITIVE,
     val strictness: Strictness = Strictness.STANDARD,
     val cadenceChoice: CadenceChoice = CadenceChoice.DAILY,
@@ -108,6 +119,7 @@ data class EditUiState(
         Habit(
             id = id,
             name = name.trim(),
+            note = note.trim().ifEmpty { null },
             polarity = polarity,
             strictness = strictness,
             cadence =
@@ -149,6 +161,7 @@ class EditViewModel(
                         EditUiState(
                             id = h.id,
                             name = h.name,
+                            note = h.note.orEmpty(),
                             polarity = h.polarity,
                             strictness = h.strictness,
                             cadenceChoice =
@@ -173,6 +186,9 @@ class EditViewModel(
         _state.update { current -> block(current).also(handle::writeDraft) }
 
     fun setName(v: String) = edit { it.copy(name = v) }
+
+    // Truncate rather than reject, so a paste that is slightly too long still lands.
+    fun setNote(v: String) = edit { it.copy(note = v.take(MAX_NOTE_LENGTH)) }
 
     fun setPolarity(v: Polarity) = edit { it.copy(polarity = v) }
 

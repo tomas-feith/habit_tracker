@@ -44,6 +44,19 @@ private val MIGRATION_1_2 =
         }
     }
 
+/**
+ * Adds the nullable `note` column to `habits`.
+ *
+ * A nullable ADD COLUMN needs no default and rewrites no row: every existing habit simply
+ * has no note, which is exactly what it had before.
+ */
+private val MIGRATION_2_3 =
+    object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `note` TEXT")
+        }
+    }
+
 @Database(
     entities = [HabitEntity::class, EntryEntity::class, PauseEntity::class],
     version = HabitDatabase.VERSION,
@@ -54,7 +67,7 @@ abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
 
         const val NAME = "habits.db"
 
@@ -74,7 +87,7 @@ abstract class HabitDatabase : RoomDatabase() {
          * The exported schema JSONs under `app/schemas` are committed for exactly this
          * reason: they are what the migration test diffs against.
          */
-        val MIGRATIONS: List<Migration> = listOf(MIGRATION_1_2)
+        val MIGRATIONS: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
 
         @Volatile
         private var instance: HabitDatabase? = null

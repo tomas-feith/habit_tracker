@@ -111,6 +111,10 @@ fun DetailScreen(
         ) {
             Headline(habit, stats.currentStreak, stats.chainLength)
 
+            // Directly under the headline: the note is the "why", and the why is worth
+            // reading before the numbers, not after them.
+            habit.note?.let { NoteCard(it) }
+
             Section("Recent") {
                 MosaicStrip(cells = state.periodCells, cellHeight = 18.dp)
                 Spacer(Modifier.height(8.dp))
@@ -201,6 +205,25 @@ private fun Headline(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun NoteCard(note: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+    ) {
+        Text(
+            text = note,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(14.dp),
+        )
     }
 }
 

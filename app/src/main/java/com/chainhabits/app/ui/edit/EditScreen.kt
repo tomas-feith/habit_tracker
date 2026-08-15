@@ -50,6 +50,9 @@ import java.time.format.TextStyle
 import java.util.Locale
 import androidx.compose.ui.text.intl.Locale as ComposeLocale
 
+/** Show the character counter only in the last stretch before the cap. */
+private const val NOTE_COUNTER_THRESHOLD = MAX_NOTE_LENGTH - 40
+
 private val DEFAULT_REMINDER = LocalTime.of(8, 0)
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -100,6 +103,8 @@ fun EditScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            NoteField(state, viewModel)
+
             KindField(state, viewModel)
             CadenceField(state, viewModel)
             StrictnessField(state, viewModel)
@@ -115,6 +120,34 @@ fun EditScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+/**
+ * The optional note.
+ *
+ * Deliberately multi-line and un-cramped: the useful thing to write here is why the habit
+ * matters or what counts as done, and a single-line box invites a label instead.
+ */
+@Composable
+private fun NoteField(
+    state: EditUiState,
+    viewModel: EditViewModel,
+) {
+    OutlinedTextField(
+        value = state.note,
+        onValueChange = viewModel::setNote,
+        label = { Text("Note") },
+        placeholder = { Text("Why this matters, or what counts as done") },
+        minLines = 2,
+        maxLines = 5,
+        supportingText = {
+            // Only worth the visual noise once the cap is actually in reach.
+            if (state.note.length >= NOTE_COUNTER_THRESHOLD) {
+                Text("${state.note.length} / $MAX_NOTE_LENGTH")
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
