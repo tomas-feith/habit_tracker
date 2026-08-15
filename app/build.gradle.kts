@@ -21,6 +21,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -167,6 +168,9 @@ dependencies {
     // forces the test classpath to match whatever the app runtime resolved, so pinning
     // only the test side is silently overridden back down.
     implementation(platform(libs.kotlinx.serialization.bom))
+    // Writes and reads the backup file. History cannot be reconstructed from anywhere
+    // else, so it needs a way off the device that does not depend on Android backup.
+    implementation(libs.kotlinx.serialization.json)
 
     // Home-screen widget. Glance renders to RemoteViews, so it is a separate Compose-like
     // runtime rather than the app's own Compose UI - nothing is shared but the domain layer.

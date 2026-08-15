@@ -71,6 +71,42 @@ interface HabitDao {
         date: LocalDate,
     )
 
+    // --- backup ---
+    //
+    // Deliberately unfiltered: archived habits are history too, and an export that quietly
+    // dropped them would restore a library missing everything the user had finished with.
+
+    @Query("SELECT * FROM habits ORDER BY id")
+    suspend fun allHabits(): List<HabitEntity>
+
+    @Query("SELECT * FROM entries ORDER BY habitId, date")
+    suspend fun allEntries(): List<EntryEntity>
+
+    @Query("SELECT * FROM pauses ORDER BY habitId, start")
+    suspend fun allPauses(): List<PauseEntity>
+
+    @Query("DELETE FROM habits")
+    suspend fun deleteAllHabits()
+
+    /**
+     * Replace everything, for a restore.
+     *
+     * One transaction, so a failure part way cannot leave half a history behind: either the
+     * whole file lands or the previous contents are still there. Deleting the habits
+     * cascades to entries and pauses, so no orphan rows survive.
+     */
+    @Transaction
+    suspend fun replaceAll(
+        habits: List<HabitEntity>,
+        entries: List<EntryEntity>,
+        pauses: List<PauseEntity>,
+    ) {
+        deleteAllHabits()
+        habits.forEach { insertHabit(it) }
+        entries.forEach { upsertEntry(it) }
+        pauses.forEach { insertPause(it) }
+    }
+
     @Query("SELECT * FROM pauses ORDER BY start")
     fun observeAllPauses(): Flow<List<PauseEntity>>
 

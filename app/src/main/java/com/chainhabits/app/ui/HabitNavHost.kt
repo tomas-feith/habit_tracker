@@ -1,6 +1,7 @@
 package com.chainhabits.app.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -17,6 +18,7 @@ import com.chainhabits.app.ui.detail.DetailViewModel
 import com.chainhabits.app.ui.edit.EditScreen
 import com.chainhabits.app.ui.edit.EditViewModel
 import com.chainhabits.app.ui.home.HomeScreen
+import com.chainhabits.app.ui.settings.SettingsScreen
 
 private const val NEW_HABIT = -1L
 
@@ -29,6 +31,15 @@ fun HabitNavHost() {
             HomeScreen(
                 onAddHabit = { nav.navigate("edit/$NEW_HABIT") },
                 onOpenHabit = { id -> nav.navigate("habit/$id") },
+                onOpenBackup = { nav.navigate("settings") },
+            )
+        }
+
+        composable("settings") {
+            val app = LocalContext.current.applicationContext as HabitApplication
+            SettingsScreen(
+                repository = app.repository,
+                onBack = { nav.popBackStack() },
             )
         }
 

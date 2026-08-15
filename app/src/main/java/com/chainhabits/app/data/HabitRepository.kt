@@ -160,4 +160,27 @@ class HabitRepository(
     suspend fun getHabit(id: Long): Habit? = dao.getHabit(id)?.toDomain()
 
     suspend fun habitsWithReminders(): List<Habit> = dao.habitsWithReminders().map { it.toDomain() }
+
+    // --- backup ---
+
+    /** Everything the app stores, as a transfer file. */
+    suspend fun exportBackup(exportedAt: String): String =
+        buildBackup(dao.allHabits(), dao.allEntries(), dao.allPauses(), exportedAt)
+
+    /**
+     * Replace everything from a backup file.
+     *
+     * Replace rather than merge: a restore is a restore, and merging would have to invent an
+     * answer for a habit present in both with different history. Ids are preserved so
+     * entries and pauses still point at their habit, which is also why the whole thing has
+     * to go in one transaction.
+     */
+    suspend fun restoreBackup(text: String): RestoreResult {
+        val result = parseBackup(text)
+        if (result is RestoreResult.Success) {
+            dao.replaceAll(result.habits, result.entries, result.pauses)
+            onDataChanged()
+        }
+        return result
+    }
 }

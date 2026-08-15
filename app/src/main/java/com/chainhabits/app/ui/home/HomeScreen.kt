@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PauseCircleOutline
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -72,6 +73,7 @@ import androidx.compose.ui.text.intl.Locale as ComposeLocale
 fun HomeScreen(
     onAddHabit: () -> Unit,
     onOpenHabit: (Long) -> Unit,
+    onOpenBackup: () -> Unit,
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -104,6 +106,9 @@ fun HomeScreen(
                     Text("Today", style = MaterialTheme.typography.headlineLarge)
                 },
                 actions = {
+                    IconButton(onClick = onOpenBackup) {
+                        Icon(Icons.Default.Settings, contentDescription = "Backup")
+                    }
                     if (state.rows.isNotEmpty()) {
                         // The holiday switch. Pausing everything one habit at a time is
                         // exactly the friction that makes people skip it and eat the misses.
