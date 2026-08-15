@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Habits</string>
+    <!--
+        app_name is declared per build type in app/build.gradle.kts, so the debug
+        install is labelled "Habits (debug)" and cannot be confused with the release.
+    -->
     <string name="widget_name">Habits</string>
     <string name="widget_description">Today\'s habits, tickable from the home screen.</string>
 </resources>

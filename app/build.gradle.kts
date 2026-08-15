@@ -34,6 +34,7 @@ android {
         versionCode = 1
         versionName = "0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        resValue("string", "app_name", "Habits")
     }
 
     signingConfigs {
@@ -52,6 +53,28 @@ android {
     }
 
     buildTypes {
+        debug {
+            /*
+             * A separate application id, so a debug build can never collide with the
+             * release install.
+             *
+             * They are signed with different keys - debug with the stock Android key,
+             * release from keystore.properties - so sharing an id means Android refuses
+             * the install with INSTALL_FAILED_UPDATE_INCOMPATIBLE, and the only way past
+             * is to uninstall. That deletes the database, and the habit history in it
+             * cannot be reconstructed from anywhere: there is no server and, for now, no
+             * export. It has already happened once.
+             *
+             * This matters most for `connectedAndroidTest`, which CI runs on every push to
+             * main and which installs the debug build on whatever device is attached.
+             */
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+
+            // Distinct on the launcher too. Two identical icons labelled "Habit Tracker"
+            // is how you end up logging a week of habits into the wrong install.
+            resValue("string", "app_name", "Habits (debug)")
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
 
@@ -73,6 +96,9 @@ android {
 
     buildFeatures {
         compose = true
+        // AGP 9 turns custom resource values off by default; app_name is declared per
+        // build type so the debug install is labelled distinctly.
+        resValues = true
     }
 
     packaging {
