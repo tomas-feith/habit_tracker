@@ -31,6 +31,20 @@ const val MAX_WEEKLY_TARGET = 7
  */
 const val MAX_NOTE_LENGTH = 280
 
+/**
+ * Like [take], but never splits a surrogate pair.
+ *
+ * A Kotlin String is UTF-16, so `take` counts code units: cutting a 280-char paste whose
+ * 280th unit is the leading half of an emoji leaves a lone surrogate behind, which renders
+ * as a tofu box and is then written to the database that way. Dropping the orphaned half
+ * costs one character and keeps the string well-formed.
+ */
+internal fun String.takeChars(max: Int): String {
+    if (length <= max) return this
+    val end = if (this[max - 1].isHighSurrogate()) max - 1 else max
+    return substring(0, end)
+}
+
 enum class CadenceChoice { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 
 /**
@@ -188,7 +202,7 @@ class EditViewModel(
     fun setName(v: String) = edit { it.copy(name = v) }
 
     // Truncate rather than reject, so a paste that is slightly too long still lands.
-    fun setNote(v: String) = edit { it.copy(note = v.take(MAX_NOTE_LENGTH)) }
+    fun setNote(v: String) = edit { it.copy(note = v.takeChars(MAX_NOTE_LENGTH)) }
 
     fun setPolarity(v: Polarity) = edit { it.copy(polarity = v) }
 

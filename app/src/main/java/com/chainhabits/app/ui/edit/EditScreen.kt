@@ -133,6 +133,16 @@ private fun NoteField(
     state: EditUiState,
     viewModel: EditViewModel,
 ) {
+    // Null rather than a lambda that renders nothing: the supporting-text slot reserves
+    // its own padding whether or not it draws anything, so an always-present slot would
+    // leave this one field spaced differently from every other control on the screen.
+    val counter: (@Composable () -> Unit)? =
+        if (state.note.length >= NOTE_COUNTER_THRESHOLD) {
+            { Text("${state.note.length} / $MAX_NOTE_LENGTH") }
+        } else {
+            null
+        }
+
     OutlinedTextField(
         value = state.note,
         onValueChange = viewModel::setNote,
@@ -140,12 +150,7 @@ private fun NoteField(
         placeholder = { Text("Why this matters, or what counts as done") },
         minLines = 2,
         maxLines = 5,
-        supportingText = {
-            // Only worth the visual noise once the cap is actually in reach.
-            if (state.note.length >= NOTE_COUNTER_THRESHOLD) {
-                Text("${state.note.length} / $MAX_NOTE_LENGTH")
-            }
-        },
+        supportingText = counter,
         modifier = Modifier.fillMaxWidth(),
     )
 }
