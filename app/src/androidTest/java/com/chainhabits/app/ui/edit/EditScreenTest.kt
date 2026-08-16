@@ -78,12 +78,12 @@ class EditScreenTest {
         }
 
     private fun show(habitId: Long) {
+        // Built outside setContent: constructing a view model inside a composable is a
+        // lint error, and it would also be rebuilt on every recomposition.
+        val model = EditViewModel(repository, habitId, SavedStateHandle())
         compose.setContent {
             HabitTrackerTheme {
-                EditScreen(
-                    viewModel = EditViewModel(repository, habitId, SavedStateHandle()),
-                    onDone = { done = true },
-                )
+                EditScreen(viewModel = model, onDone = { done = true })
             }
         }
     }

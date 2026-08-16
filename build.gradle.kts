@@ -53,7 +53,16 @@ subprojects {
 /** One command for everything CI checks, so `check` locally means the same thing. */
 tasks.register("staticAnalysis") {
     group = "verification"
-    description = "Runs ktlint and detekt across every module."
+    description = "Runs ktlint, detekt and Android lint across every module."
     dependsOn(subprojects.map { "${it.path}:ktlintCheck" })
     dependsOn(subprojects.map { "${it.path}:detekt" })
+
+    // Android lint belongs here too. It was missing, and because this task is documented
+    // as "what CI runs", a green run locally read as a green build - while lintDebug,
+    // which CI runs separately and with warningsAsErrors, was never invoked at all. It
+    // caught a real error in test code that had already been pushed.
+    //
+    // Named explicitly rather than mapped over subprojects: lint tasks exist only on
+    // Android modules, so the mapped form above would break on a plain Kotlin one.
+    dependsOn(":app:lintDebug")
 }

@@ -2,7 +2,9 @@ package com.chainhabits.app.ui.home
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.isOff
+import androidx.compose.ui.test.isOn
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -84,13 +86,16 @@ class HomeScreenTest {
     private var opened: Long? = null
 
     private fun show() {
+        // Built outside setContent: constructing a view model inside a composable is a
+        // lint error, and it would also be rebuilt on every recomposition.
+        val model = HomeViewModel(repository)
         compose.setContent {
             HabitTrackerTheme {
                 HomeScreen(
                     onAddHabit = {},
                     onOpenHabit = { opened = it },
                     onOpenBackup = {},
-                    viewModel = HomeViewModel(repository),
+                    viewModel = model,
                 )
             }
         }
@@ -104,6 +109,21 @@ class HomeScreenTest {
 
     private fun tileCount(): Int =
         compose.onAllNodesWithContentDescription("Done today").fetchSemanticsNodes().size
+
+    /**
+     * Waits for the tile itself to settle, not for the row that caused it.
+     *
+     * Waiting on the database and then asserting on the tile is a race: the write lands
+     * first and the flow, the view model and the recomposition all happen after it. A fast
+     * phone hides that and a CI emulator does not.
+     */
+    private fun awaitTile(on: Boolean) =
+        compose.waitUntil(TIMEOUT) {
+            compose
+                .onAllNodes(hasContentDescription("Done today") and if (on) isOn() else isOff())
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
 
     @Test
     fun anEmptyLibraryInvitesTheFirstHabit() {
@@ -138,13 +158,17 @@ class HomeScreenTest {
         compose.onNodeWithContentDescription("Done today").assertIsOff()
 
         compose.onNodeWithContentDescription("Done today").performClick()
-        compose.waitUntil(TIMEOUT) { runBlocking { loggedToday() } == 1 }
-        compose.onNodeWithContentDescription("Done today").assertIsOn()
+        awaitTile(on = true)
+        assertEquals(
+            "the tap must reach storage, not just the tile",
+            1,
+            runBlocking { loggedToday() },
+        )
 
         // A daily habit toggles: the same tap undoes it.
         compose.onNodeWithContentDescription("Done today").performClick()
-        compose.waitUntil(TIMEOUT) { runBlocking { loggedToday() } == 0 }
-        compose.onNodeWithContentDescription("Done today").assertIsOff()
+        awaitTile(on = false)
+        assertEquals(0, runBlocking { loggedToday() })
     }
 
     private suspend fun loggedToday(): Int =
@@ -242,12 +266,20 @@ class HomeScreenTest {
         awaitText("Read")
 
         compose.onNodeWithContentDescription("Pause all habits").performClick()
-        compose.waitUntil(TIMEOUT) { runBlocking { db.habitDao().pausedHabitIds().size } == 2 }
+        // The switch flips only once the state comes back round, so wait for the control
+        // to become the resume one rather than for the rows in the database.
+        awaitDescription("Resume all habits")
+        assertEquals(2, runBlocking { db.habitDao().pausedHabitIds().size })
 
         compose.onNodeWithContentDescription("Resume all habits").performClick()
-        compose.waitUntil(TIMEOUT) { runBlocking { db.habitDao().pausedHabitIds().isEmpty() } }
+        awaitDescription("Pause all habits")
         assertNull(runBlocking { db.habitDao().pausedHabitIds().firstOrNull() })
     }
+
+    private fun awaitDescription(description: String) =
+        compose.waitUntil(TIMEOUT) {
+            compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
+        }
 
     private companion object {
         const val TIMEOUT = 5_000L
