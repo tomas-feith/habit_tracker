@@ -45,6 +45,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -312,7 +314,16 @@ private fun CountRow(
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
+        // One labelled node for the date and what is recorded. mergeDescendants alone was
+        // not enough here - it left an unlabelled, non-focusable parent with the two texts
+        // still exposed beneath it - so the label is set outright and the children are
+        // cleared. Without this a screen reader walks five nodes per day where the
+        // checkbox rows take one.
+        Column(
+            Modifier
+                .weight(1f)
+                .clearAndSetSemantics { contentDescription = "$label. $status" },
+        ) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(
                 text = status,
@@ -328,7 +339,14 @@ private fun CountRow(
         ) {
             Icon(Icons.Default.Remove, contentDescription = "One fewer on $label")
         }
-        Text("${day.count}", style = MaterialTheme.typography.titleMedium)
+        // Hidden from accessibility rather than labelled: the status line above already
+        // says the count in words, so exposing the bare numeral adds a stop that reads
+        // out "2" with nothing to attach it to.
+        Text(
+            text = "${day.count}",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
         IconButton(onClick = { onSetCount(day.date, day.count + 1) }) {
             Icon(Icons.Default.Add, contentDescription = "One more on $label")
         }
