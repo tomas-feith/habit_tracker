@@ -232,9 +232,6 @@ private fun BackfillSheet(
     onSetCount: (LocalDate, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
-    val format = remember(locale) { DateTimeFormatter.ofPattern("EEEE d MMMM", locale) }
-
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(24.dp, 0.dp, 24.dp, 32.dp),
@@ -248,14 +245,35 @@ private fun BackfillSheet(
             )
             Spacer(Modifier.height(12.dp))
 
-            days.forEach { day ->
-                val label = dayLabel(day.date, today, format)
-                if (habit.cadence is Cadence.TimesPerWeek) {
-                    CountRow(label, dayStatus(habit, day), day, onSetCount)
-                } else {
-                    CheckRow(label, dayStatus(habit, day), day, onSetCount)
-                }
-            }
+            BackfillDays(habit, days, today, onSetCount)
+        }
+    }
+}
+
+/**
+ * The rows themselves, separate from the sheet that hosts them.
+ *
+ * Split out to be testable: their semantics are the whole point of this control, and a
+ * `ModalBottomSheet` is an awkward thing to stand up in a test for no benefit. See
+ * `BackfillSheetTest`, which exists because a plausible-looking fix here silently did
+ * nothing.
+ */
+@Composable
+internal fun BackfillDays(
+    habit: Habit,
+    days: List<DaySelection>,
+    today: LocalDate,
+    onSetCount: (LocalDate, Int) -> Unit,
+) {
+    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
+    val format = remember(locale) { DateTimeFormatter.ofPattern("EEEE d MMMM", locale) }
+
+    days.forEach { day ->
+        val label = dayLabel(day.date, today, format)
+        if (habit.cadence is Cadence.TimesPerWeek) {
+            CountRow(label, dayStatus(habit, day), day, onSetCount)
+        } else {
+            CheckRow(label, dayStatus(habit, day), day, onSetCount)
         }
     }
 }
