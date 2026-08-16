@@ -36,7 +36,7 @@ android {
         // *backwards* moves, so an unchanged code installs fine - and then the device
         // cannot tell two different builds apart, which is exactly the confusion this
         // number exists to prevent.
-        versionCode = 4
+        versionCode = 5
         versionName = "0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("string", "app_name", "Habits")
