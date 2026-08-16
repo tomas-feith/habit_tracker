@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -49,6 +50,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -429,13 +433,24 @@ private fun CheckTile(
                 .clip(shape)
                 .background(background)
                 .border(2.dp, outline, shape)
-                .clickable(onClick = onClick),
+                // Toggleable rather than clickable, and labelled in both states. An
+                // unticked tile is an empty box drawing nothing, so before this it reached
+                // a screen reader as an unlabelled button - the one control on the home
+                // screen that actually does something, announced as nothing at all. The
+                // checkbox role carries done-or-not, so the label stays the same either way.
+                .toggleable(
+                    value = satisfied,
+                    role = Role.Checkbox,
+                    onValueChange = { onClick() },
+                ).semantics { contentDescription = "Done today" },
         contentAlignment = Alignment.Center,
     ) {
         if (satisfied) {
             Icon(
                 Icons.Default.Check,
-                contentDescription = "Done today",
+                // Already covered by the tile's own label; repeating it here would make
+                // the row announce it twice.
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.size(28.dp),
             )

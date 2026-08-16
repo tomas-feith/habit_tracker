@@ -1,9 +1,10 @@
 package com.chainhabits.app.ui.detail
 
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsToggleable
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -32,8 +33,10 @@ import java.time.LocalDate
  */
 @RunWith(AndroidJUnit4::class)
 class BackfillSheetTest {
+    // An Activity-backed rule, like the other screen tests. The bare createComposeRule
+    // intermittently found no compose hierarchy at all once these suites shared a process.
     @get:Rule
-    val compose = createComposeRule()
+    val compose = createAndroidComposeRule<ComponentActivity>()
 
     private val today: LocalDate = LocalDate.parse("2026-08-16")
 
