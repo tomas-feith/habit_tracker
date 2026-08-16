@@ -181,7 +181,59 @@ fun parseBackup(text: String): RestoreResult {
         }.getOrNull()
             ?: return RestoreResult.Failure("That backup has a pause this version cannot read.")
 
+    validate(habits, entries, pauses)?.let { return it }
+
     return RestoreResult.Success(habits, entries, pauses)
+}
+
+/**
+ * The checks the payload's shape cannot make, run against the rows that would actually be
+ * written. Returns null when the backup is sound.
+ *
+ * A file can decode perfectly and still be impossible to restore - two habits sharing an
+ * id, the same day logged twice, a negative count. None of that comes out of [buildBackup];
+ * it comes from a hand-edited or concatenated file. Without these checks the ABORT conflict
+ * strategy on `habits` and `pauses` throws out of the restore instead of returning a
+ * [RestoreResult.Failure], and the duplicate-day case is worse still: `entries` uses
+ * REPLACE, so it would restore silently with one of the two counts picked arbitrarily.
+ */
+@Suppress("ReturnCount")
+private fun validate(
+    habits: List<HabitEntity>,
+    entries: List<EntryEntity>,
+    pauses: List<PauseEntity>,
+): RestoreResult.Failure? {
+    firstDuplicate(habits.map { it.id })?.let {
+        return RestoreResult.Failure(
+            "That backup lists habit $it twice. Restoring it would mean guessing which " +
+                "one you meant.",
+        )
+    }
+
+    firstDuplicate(pauses.map { it.id })?.let {
+        return RestoreResult.Failure("That backup lists pause $it twice.")
+    }
+
+    firstDuplicate(entries.map { it.habitId to it.date })?.let { (_, date) ->
+        return RestoreResult.Failure(
+            "That backup logs $date twice for the same habit, with no way to tell which " +
+                "count is right.",
+        )
+    }
+
+    // Nothing in the app can write one: every path deletes the row at zero or below. A
+    // negative would subtract from a real day, because the evaluator sums counts.
+    entries.firstOrNull { it.count < 0 }?.let {
+        return RestoreResult.Failure("That backup has a negative count on ${it.date}.")
+    }
+
+    return null
+}
+
+/** The first value that appears more than once, or null when all are distinct. */
+private fun <T> firstDuplicate(values: List<T>): T? {
+    val seen = mutableSetOf<T>()
+    return values.firstOrNull { !seen.add(it) }
 }
 
 private fun HabitEntity.toPayload(): HabitPayload =

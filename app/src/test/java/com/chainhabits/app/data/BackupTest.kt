@@ -188,6 +188,76 @@ class BackupTest {
         assertEquals(2, restored.entries.count { it.habitId == 1L })
     }
 
+    // A file that decodes cleanly can still be impossible to restore. These come from
+    // hand-editing or concatenating backups, never from buildBackup - and before they were
+    // checked, the first two threw out of the restore instead of reporting a failure, and
+    // the third restored silently with one of the two counts picked arbitrarily.
+
+    private fun reasonFor(
+        habits: List<HabitEntity> = this.habits,
+        entries: List<EntryEntity> = this.entries,
+        pauses: List<PauseEntity> = this.pauses,
+    ): String {
+        val result = parseBackup(buildBackup(habits, entries, pauses, exportedAt))
+        assertTrue("expected a failure, got $result", result is RestoreResult.Failure)
+        return (result as RestoreResult.Failure).reason
+    }
+
+    @Test
+    fun `refuses two habits sharing an id`() {
+        // insertHabit uses ABORT, so this used to surface as a raw SQL exception.
+        assertTrue(reasonFor(habits = habits + habits.first()).contains("twice"))
+    }
+
+    @Test
+    fun `refuses two pauses sharing an id`() {
+        assertTrue(reasonFor(pauses = pauses + pauses.first()).contains("twice"))
+    }
+
+    @Test
+    fun `refuses the same day logged twice for one habit`() {
+        // entries uses REPLACE, so this would have restored quietly with a coin-flip count.
+        val clash = EntryEntity(1, LocalDate.parse("2026-08-01"), 9)
+        assertTrue(reasonFor(entries = entries + clash).contains("2026-08-01"))
+    }
+
+    @Test
+    fun `the same date under different habits is not a clash`() {
+        val sameDayOtherHabit = EntryEntity(3, LocalDate.parse("2026-08-01"), 1)
+        val result =
+            parseBackup(buildBackup(habits, entries + sameDayOtherHabit, pauses, exportedAt))
+        assertTrue(result is RestoreResult.Success)
+    }
+
+    @Test
+    fun `refuses a negative count`() {
+        // The evaluator sums counts, so a negative would subtract from a real day.
+        val negative = EntryEntity(1, LocalDate.parse("2026-08-05"), -1)
+        assertTrue(reasonFor(entries = entries + negative).contains("negative"))
+    }
+
+    @Test
+    fun `still accepts a zero count`() {
+        // Zero is a real stored value, not corruption; only negatives are refused.
+        assertTrue(
+            parseBackup(buildBackup(habits, entries, pauses, exportedAt)) is RestoreResult.Success,
+        )
+    }
+
+    @Test
+    fun `a duplicate belonging to a dropped habit does not fail the restore`() {
+        // Orphans are filtered before validation, so junk pointing at a habit that is not
+        // in the file must not block a restore that is otherwise sound.
+        val orphanClash =
+            listOf(
+                EntryEntity(999, LocalDate.parse("2026-08-03"), 1),
+                EntryEntity(999, LocalDate.parse("2026-08-03"), 2),
+            )
+        val result =
+            parseBackup(buildBackup(habits.take(1), entries + orphanClash, pauses, exportedAt))
+        assertTrue(result is RestoreResult.Success)
+    }
+
     @Test
     fun `carries non-ASCII habit names through unchanged`() {
         val accented = habits.first().copy(name = "Ler 20 páginas")
