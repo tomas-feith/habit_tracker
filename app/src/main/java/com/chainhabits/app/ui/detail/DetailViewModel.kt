@@ -3,6 +3,7 @@ package com.chainhabits.app.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chainhabits.app.data.HabitRepository
+import com.chainhabits.app.domain.Backfill
 import com.chainhabits.app.domain.Cell
 import com.chainhabits.app.domain.CellState
 import com.chainhabits.app.domain.Habit
@@ -32,6 +33,20 @@ data class MonthBar(
     val hasData: Boolean,
 )
 
+/**
+ * The day the user tapped in the heatmap, as the correction sheet needs it.
+ *
+ * Derived from the live timeline on every emission rather than captured at tap time, so
+ * editing the day updates the open sheet instead of leaving it showing a stale count.
+ */
+data class DaySelection(
+    val date: LocalDate,
+    val count: Int,
+    val state: CellState,
+    /** False once the day has settled past the backfill window, or was never scheduled. */
+    val editable: Boolean,
+)
+
 data class DetailUiState(
     val habit: Habit? = null,
     val stats: HabitStats? = null,
@@ -42,6 +57,8 @@ data class DetailUiState(
     val months: List<MonthBar> = emptyList(),
     /** True while a pause is running. */
     val isPaused: Boolean = false,
+    /** The day whose correction sheet is open, if any. */
+    val selectedDay: DaySelection? = null,
 )
 
 class DetailViewModel(
@@ -51,13 +68,17 @@ class DetailViewModel(
     /** Bumped on resume so a screen left open past midnight rolls over. */
     private val today = MutableStateFlow(LocalDate.now())
 
+    /** The heatmap day the user tapped. Only the date is held; the rest is re-derived. */
+    private val selectedDate = MutableStateFlow<LocalDate?>(null)
+
     val uiState: StateFlow<DetailUiState> =
         combine(
             repository.observeHabit(habitId),
             repository.observeEntriesFor(habitId),
             repository.observePausesFor(habitId),
             today,
-        ) { habit, entries, pauses, day ->
+            selectedDate,
+        ) { habit, entries, pauses, day, selected ->
             if (habit == null) return@combine DetailUiState()
 
             val timeline = HabitEvaluator.timeline(habit, entries, day, pauses)
@@ -68,8 +89,54 @@ class DetailViewModel(
                 periodCells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
                 months = monthlyRates(timeline, day),
                 isPaused = pauses.any { it.isOpenEnded },
+                selectedDay = selected?.let { select(habit, timeline, it, day) },
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), DetailUiState())
+
+    /**
+     * Reads [date] out of the evaluated timeline.
+     *
+     * A date with no cell - one before the habit existed - reports an empty, uneditable
+     * day rather than nothing at all, so a stale selection can't blank the sheet mid-edit.
+     */
+    private fun select(
+        habit: Habit,
+        timeline: Timeline,
+        date: LocalDate,
+        today: LocalDate,
+    ): DaySelection {
+        val cell = timeline.dayCells.firstOrNull { it.date == date }
+        return DaySelection(
+            date = date,
+            count = cell?.count ?: 0,
+            state = cell?.state ?: CellState.NOT_SCHEDULED,
+            editable = Backfill.isEditable(habit, date, today),
+        )
+    }
+
+    fun selectDay(date: LocalDate) {
+        selectedDate.value = date
+    }
+
+    fun dismissDay() {
+        selectedDate.value = null
+    }
+
+    /**
+     * Writes [count] to the selected day - the fix for a habit done but never logged.
+     *
+     * Re-checks the window rather than trusting the screen to have hidden the control:
+     * the sheet can be sitting open across midnight, at which point its oldest day has
+     * quietly aged out from under it.
+     */
+    fun setSelectedCount(count: Int) =
+        viewModelScope.launch {
+            val state = uiState.value
+            val habit = state.habit ?: return@launch
+            val day = state.selectedDay ?: return@launch
+            if (!Backfill.isEditable(habit, day.date, today.value)) return@launch
+            repository.setEventCount(habit, day.date, count)
+        }
 
     fun setPaused(paused: Boolean) =
         viewModelScope.launch {

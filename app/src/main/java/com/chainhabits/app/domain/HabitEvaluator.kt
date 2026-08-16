@@ -291,7 +291,14 @@ object HabitEvaluator {
             }
         }
 
-    private fun isScheduled(
+    /**
+     * Whether [habit] is due on [date] at all - false before it existed, after it was
+     * archived, or on a weekday its cadence skips.
+     *
+     * Public because [Backfill] has to ask the same question: anything this returns false
+     * for is a day the evaluator will ignore no matter what is written against it.
+     */
+    fun isScheduled(
         habit: Habit,
         date: LocalDate,
     ): Boolean {

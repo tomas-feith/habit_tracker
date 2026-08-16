@@ -112,6 +112,30 @@ class HabitRepository(
     }
 
     /**
+     * Sets what [date] holds for [habit], for correcting a day that was never logged.
+     *
+     * Absolute rather than relative, unlike [logEvent] and [removeEvent]: the caller is
+     * editing a day it is already showing the user, so it knows the number it wants and
+     * shouldn't have to reason about whether this cadence toggles or accumulates. Zero
+     * deletes the row rather than storing it, so "never logged" stays a single state.
+     *
+     * Enforcing *which* days may be corrected is [com.chainhabits.app.domain.Backfill]'s
+     * job, not this one's - a restore has to be able to write any date at all.
+     */
+    suspend fun setEventCount(
+        habit: Habit,
+        date: LocalDate,
+        count: Int,
+    ) {
+        if (count <= 0) {
+            dao.deleteEntry(habit.id, date)
+        } else {
+            dao.upsertEntry(EntryEntity(habit.id, date, count))
+        }
+        onDataChanged()
+    }
+
+    /**
      * Suspends [habitId] from [from] onward. Idempotent - pausing twice changes nothing.
      *
      * Paused periods settle as not-scheduled, so they neither count as misses nor break a

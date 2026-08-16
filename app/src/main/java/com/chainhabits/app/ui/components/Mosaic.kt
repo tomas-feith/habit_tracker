@@ -1,6 +1,7 @@
 package com.chainhabits.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -216,6 +218,10 @@ fun QuotaPips(
  *
  * Kept as discrete cells rather than a connected chain - this screen is for counting and
  * scanning, where the home strip is for feeling the streak.
+ *
+ * [onDayClick] makes cells tappable, which is how a forgotten day gets corrected. Hit
+ * testing shares [yearGrid] with the drawing rather than re-deriving the layout, so a tap
+ * can never resolve to a different day than the one under the finger.
  */
 @Composable
 fun YearMosaic(
@@ -223,10 +229,98 @@ fun YearMosaic(
     modifier: Modifier = Modifier,
     cellSize: Dp = 12.dp,
     gap: Dp = 2.dp,
+    onDayClick: ((Cell) -> Unit)? = null,
 ) {
     val colors = MosaicTheme.colors
     if (cells.isEmpty()) return
 
+    val description = remember(cells) { summarise(cells) }
+
+    Canvas(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(cellSize * DAYS_PER_WEEK + gap * (DAYS_PER_WEEK - 1))
+                // A Canvas has no per-cell semantics nodes, so this tap target is
+                // pointer-only and unreachable by TalkBack. The screen carries the same
+                // correction in its own controls for that reason.
+                .then(
+                    if (onDayClick == null) {
+                        Modifier
+                    } else {
+                        Modifier.pointerInput(cells, onDayClick) {
+                            detectTapGestures { offset ->
+                                val grid =
+                                    yearGrid(
+                                        cells = cells,
+                                        widthPx = size.width.toFloat(),
+                                        gapPx = gap.toPx(),
+                                        maxSidePx = cellSize.toPx(),
+                                    )
+                                grid.indexAt(offset, cells.size)?.let { onDayClick(cells[it]) }
+                            }
+                        }
+                    },
+                ).semantics { contentDescription = description },
+    ) {
+        val grid = yearGrid(cells, size.width, gap.toPx(), cellSize.toPx())
+        cells.forEachIndexed { i, cell ->
+            drawCell(
+                state = cell.state,
+                colors = colors,
+                topLeft = grid.topLeft(i),
+                size = Size(grid.side, grid.side),
+            )
+        }
+    }
+}
+
+/**
+ * The year heatmap's layout: where each cell sits, and which cell a point lands on.
+ *
+ * [leading] is the blank pad in front of the first cell that makes every column start on a
+ * Monday, so a cell's index and its grid slot are not the same number.
+ */
+private class YearGrid(
+    private val leading: Int,
+    private val weeks: Int,
+    val side: Float,
+    private val gap: Float,
+) {
+    /** Cell edge plus the gutter after it - the distance between neighbours. */
+    private val pitch: Float get() = side + gap
+
+    fun topLeft(index: Int): Offset {
+        val slot = leading + index
+        return Offset((slot / DAYS_PER_WEEK) * pitch, (slot % DAYS_PER_WEEK) * pitch)
+    }
+
+    /**
+     * The cell index under [offset], or null where there is no day: the leading pad, the
+     * tail after the last cell, a gutter between cells, or outside the grid entirely.
+     *
+     * Rejecting gutter hits keeps a tap near a boundary from silently editing a
+     * neighbouring day, which on this grid is a different date in every direction.
+     */
+    fun indexAt(
+        offset: Offset,
+        count: Int,
+    ): Int? {
+        if (offset.x < 0f || offset.y < 0f) return null
+        val col = (offset.x / pitch).toInt()
+        val row = (offset.y / pitch).toInt()
+        if (col >= weeks || row >= DAYS_PER_WEEK) return null
+        if (offset.x - col * pitch > side || offset.y - row * pitch > side) return null
+        return (col * DAYS_PER_WEEK + row - leading).takeIf { it in 0 until count }
+    }
+}
+
+private fun yearGrid(
+    cells: List<Cell>,
+    widthPx: Float,
+    gapPx: Float,
+    maxSidePx: Float,
+): YearGrid {
     // Pad the front so the first column starts on a Monday.
     val leading =
         (
@@ -235,32 +329,8 @@ fun YearMosaic(
                 .date.dayOfWeek.value + 6
         ) % DAYS_PER_WEEK
     val weeks = (leading + cells.size + DAYS_PER_WEEK - 1) / DAYS_PER_WEEK
-    val description = remember(cells) { summarise(cells) }
-
-    Canvas(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(cellSize * DAYS_PER_WEEK + gap * (DAYS_PER_WEEK - 1))
-                .semantics { contentDescription = description },
-    ) {
-        val gapPx = gap.toPx()
-        val side =
-            ((size.width - gapPx * (weeks - 1)) / weeks - gapPx)
-                .coerceIn(2f, cellSize.toPx())
-
-        cells.forEachIndexed { i, cell ->
-            val slot = leading + i
-            val col = slot / DAYS_PER_WEEK
-            val row = slot % DAYS_PER_WEEK
-            drawCell(
-                state = cell.state,
-                colors = colors,
-                topLeft = Offset(col * (side + gapPx), row * (side + gapPx)),
-                size = Size(side, side),
-            )
-        }
-    }
+    val side = ((widthPx - gapPx * (weeks - 1)) / weeks - gapPx).coerceIn(2f, maxSidePx)
+    return YearGrid(leading = leading, weeks = weeks, side = side, gap = gapPx)
 }
 
 /** Legend explaining the cell language, shown once on the detail screen. */

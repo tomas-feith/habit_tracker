@@ -20,17 +20,22 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PauseCircleOutline
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -38,15 +43,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.chainhabits.app.domain.Backfill
 import com.chainhabits.app.domain.Cadence
+import com.chainhabits.app.domain.CellState
 import com.chainhabits.app.domain.Habit
+import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
 import com.chainhabits.app.ui.components.MosaicLegend
 import com.chainhabits.app.ui.components.MosaicStrip
 import com.chainhabits.app.ui.components.YearMosaic
 import com.chainhabits.app.ui.theme.MosaicTheme
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.text.intl.Locale as ComposeLocale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,10 +142,19 @@ fun DetailScreen(
                     YearMosaic(
                         cells = state.yearCells,
                         modifier = Modifier.width(720.dp),
+                        onDayClick = { viewModel.selectDay(it.date) },
                     )
                 }
                 Spacer(Modifier.height(10.dp))
                 MosaicLegend(strict = habit.strictness == Strictness.STRICT)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text =
+                        "Tap a day to see it. The last ${Backfill.WINDOW_DAYS} days can " +
+                            "still be corrected if you forgot to log one.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Section("Numbers") {
@@ -152,8 +173,140 @@ fun DetailScreen(
                 Section("By month") { MonthChart(state.months) }
             }
         }
+
+        state.selectedDay?.let { day ->
+            DaySheet(
+                habit = habit,
+                day = day,
+                onSetCount = viewModel::setSelectedCount,
+                onDismiss = viewModel::dismissDay,
+            )
+        }
     }
 }
+
+/**
+ * The correction sheet for one day of the heatmap.
+ *
+ * Every tapped day opens it, not just the editable ones: "what was the 3rd?" is a fair
+ * question about any square, and a grid where most taps do nothing at all reads as broken.
+ * Outside the window it simply says so instead of offering buttons.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DaySheet(
+    habit: Habit,
+    day: DaySelection,
+    onSetCount: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Compose's locale rather than Locale.getDefault(), so the date re-formats if the user
+    // changes language while the app is running. Carries the year: every square in the
+    // heatmap opens this sheet, and the grid reaches back far enough that a bare
+    // "Monday 3 November" would be genuinely ambiguous.
+    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
+    val format =
+        remember(locale) {
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)
+        }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(24.dp, 0.dp, 24.dp, 32.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(day.date.format(format), style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = dayStatus(habit, day),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+
+            if (!day.editable) {
+                Text(
+                    text = settledReason(habit, day),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                return@Column
+            }
+
+            if (habit.cadence is Cadence.TimesPerWeek) {
+                // Weekly habits count events, so the correction is a number, not a flag -
+                // two forgotten workouts on one Saturday is a real thing to record.
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { onSetCount(day.count - 1) },
+                        enabled = day.count > 0,
+                    ) { Text("-") }
+                    Text(
+                        text = "${day.count}",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    OutlinedButton(onClick = { onSetCount(day.count + 1) }) { Text("+") }
+                }
+            } else if (day.count > 0) {
+                OutlinedButton(onClick = { onSetCount(0) }) { Text("Clear this day") }
+            } else {
+                Button(onClick = { onSetCount(1) }) {
+                    Text(if (habit.polarity == Polarity.NEGATIVE) "Mark a slip" else "Mark done")
+                }
+            }
+        }
+    }
+}
+
+/** What the day currently holds, in the mosaic's own language. */
+private fun dayStatus(
+    habit: Habit,
+    day: DaySelection,
+): String {
+    val slip = habit.polarity == Polarity.NEGATIVE
+    if (day.count > 1) return "${day.count} logged"
+    if (day.count == 1) return if (slip) "Slipped" else "Done"
+
+    return when (day.state) {
+        CellState.DONE -> if (slip) "Clean" else "Done"
+        CellState.MISSED_ONCE -> if (slip) "Slipped" else "Missed - the chain survived it"
+        CellState.BROKEN -> if (slip) "Slipped - chain broken" else "Missed - chain broken"
+        CellState.PENDING -> if (slip) "Clean so far" else "Not logged yet"
+        CellState.NOT_SCHEDULED -> "Not scheduled"
+    }
+}
+
+/**
+ * Why a day offers no buttons.
+ *
+ * Four different reasons, and collapsing them would misinform: "not due on a Tuesday" and
+ * "too old to change" are nothing alike, and telling someone a habit "wasn't running" on a
+ * day it simply wasn't scheduled for is just wrong.
+ */
+private fun settledReason(
+    habit: Habit,
+    day: DaySelection,
+): String =
+    when {
+        day.date < habit.createdOn -> {
+            "This habit didn't exist yet."
+        }
+
+        habit.archivedOn?.let { day.date >= it } == true -> {
+            "This habit was archived by then."
+        }
+
+        !HabitEvaluator.isScheduled(habit, day.date) -> {
+            "Not due on this day."
+        }
+
+        else -> {
+            "Settled. Only the last ${Backfill.WINDOW_DAYS} days can be corrected - " +
+                "past that, the record stands."
+        }
+    }
 
 /**
  * The number the screen leads with.
