@@ -129,6 +129,25 @@ data class EditUiState(
 ) {
     val isValid: Boolean get() = name.isNotBlank()
 
+    /**
+     * The habit to persist: this form's fields, with the ones it does not own taken from
+     * [stored] - the habit as it currently sits in the database, or null when creating.
+     *
+     * `sortOrder` and `archivedOn` are storage state, not form state. The form cannot edit
+     * them and so does not carry them, which means [toHabit] alone produces a habit with
+     * both at their defaults - and `updateHabit` rewrites the whole row, so saving an edit
+     * would quietly reset the habit's place in the list and un-archive it.
+     *
+     * Read back at save time rather than held in [EditUiState], for two reasons: the form
+     * stays a description of what the user can actually change, and a draft restored after
+     * process death cannot resurface a stale position.
+     */
+    fun toHabitPreserving(stored: Habit?): Habit =
+        toHabit().copy(
+            sortOrder = stored?.sortOrder ?: 0,
+            archivedOn = stored?.archivedOn,
+        )
+
     fun toHabit() =
         Habit(
             id = id,
@@ -224,11 +243,13 @@ class EditViewModel(
 
     fun save(context: Context) =
         viewModelScope.launch {
-            val habit = _state.value.toHabit()
             val saved =
                 if (isNew) {
+                    // The repository picks the sort order for a new habit; the form has none.
+                    val habit = _state.value.toHabit()
                     habit.copy(id = repository.addHabit(habit))
                 } else {
+                    val habit = _state.value.toHabitPreserving(repository.getHabit(habitId))
                     repository.updateHabit(habit)
                     habit
                 }

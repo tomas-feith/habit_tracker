@@ -66,8 +66,17 @@ class HabitRepository(
             }
         }
 
-    suspend fun addHabit(habit: Habit): Long =
-        dao.insertHabit(habit.toEntity()).also { onDataChanged() }
+    /**
+     * Creates [habit], placing it at the end of the list.
+     *
+     * The position is assigned here rather than taken from [habit]: the edit form has no
+     * concept of sort order, so anything it builds carries the default 0. See
+     * [nextSortOrder] for why that is the wrong place to land.
+     */
+    suspend fun addHabit(habit: Habit): Long {
+        val entity = habit.toEntity().copy(sortOrder = nextSortOrder(dao.allHabits()))
+        return dao.insertHabit(entity).also { onDataChanged() }
+    }
 
     suspend fun updateHabit(habit: Habit) {
         dao.updateHabit(habit.toEntity())

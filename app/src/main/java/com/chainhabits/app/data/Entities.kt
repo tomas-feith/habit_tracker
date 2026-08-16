@@ -136,6 +136,20 @@ fun Habit.toEntity(): HabitEntity =
         sortOrder = sortOrder,
     )
 
+/**
+ * Where a newly created habit goes: after everything that already exists.
+ *
+ * Habits are listed by `sortOrder, id`, and a drag rewrites the whole list as 0..n-1. A new
+ * habit left at the default 0 therefore does not land at the bottom - it ties with whatever
+ * the user dragged to the top and settles just below it, which reads as the list
+ * rearranging itself for no reason.
+ *
+ * [existing] must be unfiltered. Archived habits keep their positions, and skipping them
+ * would hand a new habit a number that is already taken.
+ */
+fun nextSortOrder(existing: List<HabitEntity>): Int =
+    (existing.maxOfOrNull { it.sortOrder } ?: -1) + 1
+
 fun Set<DayOfWeek>.toBitmask(): Int = fold(0) { acc, d -> acc or (1 shl d.value) }
 
 fun Int.toDaySet(): Set<DayOfWeek> =
