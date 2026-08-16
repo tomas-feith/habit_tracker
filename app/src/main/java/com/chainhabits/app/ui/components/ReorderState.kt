@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,12 +73,31 @@ class ReorderState internal constructor(
     }
 }
 
+/**
+ * Remembers the drag state for a list.
+ *
+ * The callbacks are read through [rememberUpdatedState] rather than captured: the state
+ * survives recomposition (it is keyed only on [listState]), so a directly captured lambda
+ * would be the one from first composition forever. Harmless while the callers only close
+ * over a view model, and a silent, very hard to find bug the moment one closes over
+ * anything that changes.
+ */
 @Composable
 fun rememberReorderState(
     listState: LazyListState,
     onMove: (fromKey: Long, toKey: Long) -> Unit,
     onDrop: () -> Unit,
-): ReorderState = remember(listState) { ReorderState(listState, onMove, onDrop) }
+): ReorderState {
+    val currentMove by rememberUpdatedState(onMove)
+    val currentDrop by rememberUpdatedState(onDrop)
+    return remember(listState) {
+        ReorderState(
+            listState = listState,
+            onMove = { from, to -> currentMove(from, to) },
+            onDrop = { currentDrop() },
+        )
+    }
+}
 
 /**
  * Makes one row draggable. Handles the gesture, the lift and the follow-the-finger offset.

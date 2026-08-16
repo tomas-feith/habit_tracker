@@ -66,9 +66,9 @@ android {
              * They are signed with different keys - debug with the stock Android key,
              * release from keystore.properties - so sharing an id means Android refuses
              * the install with INSTALL_FAILED_UPDATE_INCOMPATIBLE, and the only way past
-             * is to uninstall. That deletes the database, and the habit history in it
-             * cannot be reconstructed from anywhere: there is no server and, for now, no
-             * export. It has already happened once.
+             * is to uninstall. That deletes the database, and there is no server to
+             * re-sync the history from. It has already happened once. Saving a backup
+             * first now recovers it, but only if you remembered to save one.
              *
              * This matters most for `connectedAndroidTest`, which CI runs on every push to
              * main and which installs the debug build on whatever device is attached.

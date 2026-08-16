@@ -78,6 +78,24 @@ object Reminders {
         app.repository.habitsWithReminders().forEach { schedule(context, it) }
     }
 
+    /**
+     * The alarm's handle for one habit. The same inputs must produce the same object, or
+     * [cancel] cannot reach what [schedule] created.
+     *
+     * The request code is the *only* thing telling two habits apart here:
+     * `Intent.filterEquals` - which is what the system compares - ignores extras, and
+     * these intents are otherwise identical. So the narrowing of a `Long` id to an `Int`
+     * request code is load-bearing, and two habits whose ids differ by exactly 2^32 would
+     * share an alarm.
+     *
+     * Left as it is deliberately. Ids come from `AUTOINCREMENT` starting at 1, so reaching
+     * that needs two billion habits; whereas the obvious fix - a per-habit `data` URI or
+     * action, which `filterEquals` does compare - changes the identity of every alarm
+     * already scheduled on the device. Those become unreachable by [cancel] and keep
+     * firing alongside their replacements until the next reboot clears them. That is a
+     * real bug traded for an unreachable one, and it would leave legacy-cancelling code
+     * in the app permanently.
+     */
     private fun pendingIntent(
         context: Context,
         habitId: Long,
