@@ -23,6 +23,10 @@ elif [ -x "$HOME/tools/jdk-17.0.13+11/bin/java" ]; then
     export JAVA_HOME
 fi
 
-./gradlew --quiet ktlintCheck detekt
+# detektMain rather than the bare `detekt` task, which resolves no types in detekt 2 and
+# finds nothing. detektTest is left to CI: type resolution costs a minute or two on a cold
+# run, and production code is where it earns that back. If the wait gets in the way,
+# `git commit --no-verify` skips it and CI still runs both.
+./gradlew --quiet ktlintCheck detektMain
 
 echo "pre-commit: ok"

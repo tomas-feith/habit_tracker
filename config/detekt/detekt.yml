@@ -1,34 +1,35 @@
 # Project overrides on top of detekt's defaults (buildUponDefaultConfig = true).
 # Only deviations are listed; everything else keeps detekt's shipped setting.
-
-build:
-  maxIssues: 0
+#
+# detekt 2 dropped `build.maxIssues`: the build now fails on any finding with severity
+# `error` rather than counting them, so the old `maxIssues: 0` has no equivalent and needs
+# no replacement - it was already saying "fail on anything".
 
 complexity:
   LongParameterList:
     # Compose composables legitimately take many parameters, most with defaults.
     ignoreDefaultParameters: true
-    functionThreshold: 8
-    constructorThreshold: 8
+    allowedFunctionParameters: 8
+    allowedConstructorParameters: 8
   TooManyFunctions:
-    thresholdInFiles: 20
+    allowedFunctionsPerFile: 20
     # HabitRepository is the single data-access facade: every screen and the widget go
     # through it, so its size tracks the app's surface rather than any tangle inside it.
     # Splitting it to satisfy a count would scatter writes that all need the same
     # post-write widget refresh.
-    thresholdInClasses: 24
-    thresholdInObjects: 20
+    allowedFunctionsPerClass: 24
+    allowedFunctionsPerObject: 20
     # A DAO is a list of queries; splitting it would be worse than leaving it long. The
     # alternative - a DAO per table - buys nothing here, because the transactional helpers
     # (logEvent, startPause) are exactly the places where one table's writes need to be
     # consistent, and those read best next to the queries they wrap.
-    thresholdInInterfaces: 30
+    allowedFunctionsPerInterface: 30
     ignorePrivate: true
   LongMethod:
     # Compose screen functions are declarative trees, not dense logic.
-    threshold: 120
+    allowedLines: 120
   CyclomaticComplexMethod:
-    threshold: 18
+    allowedComplexity: 18
 
 style:
   MagicNumber:
@@ -47,7 +48,10 @@ style:
     excludes: ['**/test/**']
   ReturnCount:
     max: 4
-  UnusedPrivateMember:
+  # UnusedPrivateMember was split in two in detekt 2.
+  UnusedPrivateFunction:
+    active: true
+  UnusedPrivateProperty:
     active: true
   ForbiddenComment:
     # Flag leftover markers so they don't quietly ship.
@@ -67,3 +71,15 @@ exceptions:
     active: true
   SwallowedException:
     active: true
+
+coroutines:
+  # Off deliberately, and only reachable at all now that detekt 2 resolves types.
+  #
+  # The rule wants dispatchers injected so a test can substitute one. Every site it flags
+  # here is an Android entry point that has to build its own scope - two BroadcastReceivers
+  # using goAsync, the widget receiver, and the file read/write behind the backup screen.
+  # There is no DI container in this app to inject through, so satisfying it would mean
+  # threading a dispatcher parameter through constructors the framework calls, for classes
+  # that have no unit tests to benefit. That is ceremony bought with indirection.
+  InjectDispatcher:
+    active: false

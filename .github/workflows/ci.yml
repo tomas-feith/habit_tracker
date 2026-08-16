@@ -39,8 +39,11 @@ jobs:
       - name: Check formatting
         run: ./gradlew ktlintCheck --no-daemon
 
+      # detektMain and detektTest, not the bare `detekt` task: those are the ones detekt 2
+      # wires type resolution into. The plain task is the retiring 1.x-shaped one and
+      # reports nothing on this project.
       - name: Static analysis
-        run: ./gradlew detekt --no-daemon
+        run: ./gradlew detektMain detektTest --no-daemon
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon

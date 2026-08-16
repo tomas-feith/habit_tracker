@@ -15,7 +15,11 @@ is genuinely required.
   keep it that way; history leaves the device only through Android's own backup
   to the user's Google account.
 - **Static analysis** - ktlint + detekt, plus Android lint with
-  `warningsAsErrors`. `./gradlew staticAnalysis` runs what CI runs.
+  `warningsAsErrors`. `./gradlew staticAnalysis` runs what CI runs, Android lint
+  included - it did not always, and a green run meant less than it looked like.
+  detekt is 2.x, on the K2 frontend, so **type resolution is on**: the tasks that
+  matter are `detektMain` and `detektTest`, and the bare `detekt` task resolves
+  nothing and reports nothing.
 
 Release signing reads `keystore.properties`, which is gitignored and absent on
 CI and on a fresh clone. That is deliberate: an unsigned release artifact is
