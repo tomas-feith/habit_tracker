@@ -10,19 +10,24 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PauseCircleOutline
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -54,6 +60,7 @@ import com.chainhabits.app.ui.components.MosaicLegend
 import com.chainhabits.app.ui.components.MosaicStrip
 import com.chainhabits.app.ui.components.YearMosaic
 import com.chainhabits.app.ui.theme.MosaicTheme
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -155,6 +162,16 @@ fun DetailScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // The heatmap's own cells are 12dp Canvas squares: too small to be a fair
+                // touch target and invisible to a screen reader. This button is the same
+                // correction as a real, labelled control, so the feature does not depend
+                // on being able to hit one of 363 squares.
+                if (state.backfillDays.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = viewModel::openBackfill) {
+                        Text("Fix a missed day")
+                    }
+                }
             }
 
             Section("Numbers") {
@@ -178,12 +195,157 @@ fun DetailScreen(
             DaySheet(
                 habit = habit,
                 day = day,
-                onSetCount = viewModel::setSelectedCount,
+                onSetCount = { count -> viewModel.setDayCount(day.date, count) },
                 onDismiss = viewModel::dismissDay,
+            )
+        }
+
+        if (state.backfillOpen) {
+            BackfillSheet(
+                habit = habit,
+                days = state.backfillDays,
+                today = state.today,
+                onSetCount = viewModel::setDayCount,
+                onDismiss = viewModel::dismissBackfill,
             )
         }
     }
 }
+
+/**
+ * The correction window as a list, one real control per day.
+ *
+ * This is the accessible route to the same edit the heatmap offers by tap. It is a flat
+ * list of at most [Backfill.WINDOW_DAYS] rows rather than a grid, because that is what a
+ * screen reader can actually navigate - swiping through 363 undifferentiated cells to
+ * find last Tuesday is not a feature anyone would use. Each row is a single focusable
+ * node that announces the date, what is recorded, and what toggling it will do.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackfillSheet(
+    habit: Habit,
+    days: List<DaySelection>,
+    today: LocalDate,
+    onSetCount: (LocalDate, Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
+    val format = remember(locale) { DateTimeFormatter.ofPattern("EEEE d MMMM", locale) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(24.dp, 0.dp, 24.dp, 32.dp),
+        ) {
+            Text("Fix a missed day", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Did it but forgot to log it? Set the day straight here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+
+            days.forEach { day ->
+                val label = dayLabel(day.date, today, format)
+                if (habit.cadence is Cadence.TimesPerWeek) {
+                    CountRow(label, dayStatus(habit, day), day, onSetCount)
+                } else {
+                    CheckRow(label, dayStatus(habit, day), day, onSetCount)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A day that is simply done or not.
+ *
+ * The whole row is the toggle rather than the checkbox alone: it gives a target far above
+ * the 48dp minimum, and it collapses to one node that announces as a checkbox with its
+ * date and state, instead of a stray tick TalkBack would read with no idea what it is for.
+ */
+@Composable
+private fun CheckRow(
+    label: String,
+    status: String,
+    day: DaySelection,
+    onSetCount: (LocalDate, Int) -> Unit,
+) {
+    val done = day.count > 0
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .toggleable(
+                    value = done,
+                    role = Role.Checkbox,
+                    onValueChange = { on -> onSetCount(day.date, if (on) 1 else 0) },
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Null callback: the row above owns the input, so this draws state only and does
+        // not become a second thing to focus.
+        Checkbox(checked = done, onCheckedChange = null)
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** A day that counts events, for a times-per-week habit. */
+@Composable
+private fun CountRow(
+    label: String,
+    status: String,
+    day: DaySelection,
+    onSetCount: (LocalDate, Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        // Named per day, not "add" and "remove": a screen reader reaches these one after
+        // another down the list, where a bare "add" gives no clue which day it lands on.
+        IconButton(
+            onClick = { onSetCount(day.date, day.count - 1) },
+            enabled = day.count > 0,
+        ) {
+            Icon(Icons.Default.Remove, contentDescription = "One fewer on $label")
+        }
+        Text("${day.count}", style = MaterialTheme.typography.titleMedium)
+        IconButton(onClick = { onSetCount(day.date, day.count + 1) }) {
+            Icon(Icons.Default.Add, contentDescription = "One more on $label")
+        }
+    }
+}
+
+/** "Today" and "Yesterday" beat a date for the two days this is mostly used on. */
+private fun dayLabel(
+    date: LocalDate,
+    today: LocalDate,
+    format: DateTimeFormatter,
+): String =
+    when (date) {
+        today -> "Today"
+        today.minusDays(1) -> "Yesterday"
+        else -> date.format(format)
+    }
 
 /**
  * The correction sheet for one day of the heatmap.
