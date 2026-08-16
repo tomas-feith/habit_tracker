@@ -32,7 +32,11 @@ android {
         applicationId = "com.chainhabits.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
+        // Bump on anything that gets installed on a real phone. Android refuses only
+        // *backwards* moves, so an unchanged code installs fine - and then the device
+        // cannot tell two different builds apart, which is exactly the confusion this
+        // number exists to prevent.
+        versionCode = 2
         versionName = "0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("string", "app_name", "Habits")
