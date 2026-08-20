@@ -159,9 +159,16 @@ object Reminders {
      * for any realistic id but is a silent collision at 2^32.
      *
      * The URI was previously avoided because changing an alarm's identity strands the ones
-     * already scheduled on the device, unreachable by [cancel] and firing forever beside
-     * their replacements. That objection died with the repeating alarm: a stranded one-shot
-     * alarm fires once, re-arms the current schedule like any other firing, and is gone.
+     * already scheduled on the device, unreachable by [cancel] and firing beside their
+     * replacements. For anything this code arms that is now harmless - a stranded one-shot
+     * alarm fires once, is judged by [ReminderDecision] like any other firing, and is gone.
+     *
+     * It was *not* harmless for the alarms left by the versionCode 7 build, which were
+     * repeating: those keep firing daily, at a drifting time inside an 18-hour window, and
+     * nothing this app can do reaches them. Upgrading in place therefore leaves duplicates
+     * until the alarms are dropped by a reboot or a force-stop. Observed on device after
+     * the 7 -> 8 update, and cleared with a force-stop; noted here because the same trap
+     * waits for any future change to this method.
      */
     private fun pendingIntent(
         context: Context,
