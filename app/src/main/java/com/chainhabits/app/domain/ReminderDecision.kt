@@ -17,6 +17,14 @@ import java.time.LocalTime
  */
 object ReminderDecision {
     /**
+     * How far apart habits sharing a reminder time are spread.
+     *
+     * Comfortably over the nine-minute idle throttle, and small enough that the nudge still
+     * belongs to the moment the user picked.
+     */
+    private const val STAGGER_MINUTES = 10L
+
+    /**
      * True when [habit] still deserves a nudge on [today].
      *
      * [entries] must cover at least the week containing [today]; anything outside the
@@ -75,6 +83,29 @@ object ReminderDecision {
     ): LocalDateTime {
         val todayAt = LocalDateTime.of(now.toLocalDate(), time)
         return if (todayAt.isAfter(now)) todayAt else todayAt.plusDays(1)
+    }
+
+    /**
+     * The reminder time for the habit in slot [index] of a group that all share one time.
+     *
+     * `setAndAllowWhileIdle` is rate-limited to roughly one alarm per app per nine minutes
+     * while the device is idle, so three habits all set to 07:00 would have the second and
+     * third held back by the system - arriving at a time the user never chose and cannot
+     * predict, which is the complaint this whole area started from. Spreading them by more
+     * than the throttle window means the schedule the app asks for is the schedule it gets.
+     *
+     * Slot 0 keeps the exact time, so a habit only moves when it is actually sharing.
+     */
+    fun staggeredTime(
+        time: LocalTime,
+        index: Int,
+    ): LocalTime {
+        if (index <= 0) return time
+        val shifted = time.plusMinutes(STAGGER_MINUTES * index)
+        // LocalTime wraps at midnight. A reminder pushed over into the next day would be
+        // judged against the wrong date entirely, so drop the stagger rather than the day
+        // and let the system throttle that one instead.
+        return if (shifted.isBefore(time)) time else shifted
     }
 
     private fun countOn(

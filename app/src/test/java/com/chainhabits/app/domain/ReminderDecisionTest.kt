@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -150,6 +151,41 @@ class ReminderDecisionTest {
         val now = LocalDateTime.of(today, at7)
         val next = ReminderDecision.nextTriggerAfter(now, at7)
         assertEquals(LocalDateTime.of(today.plusDays(1), at7), next)
+    }
+
+    // --- stagger ---
+
+    @Test
+    fun `the first habit at a time keeps that time exactly`() {
+        assertEquals(at7, ReminderDecision.staggeredTime(at7, 0))
+    }
+
+    @Test
+    fun `habits sharing a time are spread past the idle throttle`() {
+        val second = ReminderDecision.staggeredTime(at7, 1)
+        val third = ReminderDecision.staggeredTime(at7, 2)
+
+        assertEquals(LocalTime.of(7, 10), second)
+        assertEquals(LocalTime.of(7, 20), third)
+        // The throttle is one alarm per app per nine minutes while idle.
+        assertTrue(Duration.between(at7, second).toMinutes() > 9)
+        assertTrue(Duration.between(second, third).toMinutes() > 9)
+    }
+
+    /**
+     * Staggering a late reminder must not roll it into tomorrow: the notification would
+     * then judge a day that has already been settled, which is worse than being throttled.
+     */
+    @Test
+    fun `a stagger that would cross midnight is dropped instead`() {
+        val lateNight = LocalTime.of(23, 55)
+        assertEquals(lateNight, ReminderDecision.staggeredTime(lateNight, 1))
+    }
+
+    @Test
+    fun `a stagger that stays inside the day is kept`() {
+        val lateNight = LocalTime.of(23, 40)
+        assertEquals(LocalTime.of(23, 50), ReminderDecision.staggeredTime(lateNight, 1))
     }
 
     /**

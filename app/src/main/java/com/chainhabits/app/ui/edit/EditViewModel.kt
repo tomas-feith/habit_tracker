@@ -268,9 +268,12 @@ class EditViewModel(
                     habit
                 }
 
-            // Unconditional: schedule cancels by itself for a habit that has no reminder
-            // time, or can no longer earn one.
-            Reminders.schedule(context, saved)
+            // Cancel first: this habit may have just lost its reminder or moved to another
+            // time, and rescheduleAll only ever arms, so nothing else would clear the old
+            // alarm. Re-arming everything is what keeps the stagger correct when this save
+            // added a habit to, or took one out of, a group sharing a time.
+            Reminders.cancel(context, saved.id)
+            Reminders.rescheduleAll(context)
 
             _state.update { it.copy(saved = true) }
         }
