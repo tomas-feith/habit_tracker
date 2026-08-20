@@ -192,6 +192,20 @@ class HabitRepository(
 
     suspend fun getHabit(id: Long): Habit? = dao.getHabit(id)?.toDomain()
 
+    /**
+     * One habit's entries from [from] onward, as a snapshot.
+     *
+     * The Flow variants above are for the UI, which stays subscribed. A reminder firing in
+     * a BroadcastReceiver asks once and is gone, and [from] keeps it from reading a year of
+     * history to answer a question about this week.
+     */
+    suspend fun entriesFor(
+        habitId: Long,
+        from: LocalDate,
+    ): List<Entry> = dao.entriesFor(habitId, from).map { Entry(it.habitId, it.date, it.count) }
+
+    suspend fun pausesFor(habitId: Long): List<Pause> = dao.pausesFor(habitId).map { it.toDomain() }
+
     suspend fun habitsWithReminders(): List<Habit> = dao.habitsWithReminders().map { it.toDomain() }
 
     // --- backup ---

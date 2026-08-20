@@ -223,7 +223,21 @@ class EditViewModel(
     // Truncate rather than reject, so a paste that is slightly too long still lands.
     fun setNote(v: String) = edit { it.copy(note = v.takeChars(MAX_NOTE_LENGTH)) }
 
-    fun setPolarity(v: Polarity) = edit { it.copy(polarity = v) }
+    /**
+     * Switching to a negative habit drops any reminder time with it.
+     *
+     * A negative habit gets no nudge - there is no action it could prompt, see
+     * [com.chainhabits.app.domain.ReminderDecision]. Clearing the time rather than merely
+     * hiding the control keeps the stored habit honest: a reminder time that will never
+     * fire, waiting to come back if the kind is flipped again, is a state nobody asked for.
+     */
+    fun setPolarity(v: Polarity) =
+        edit {
+            it.copy(
+                polarity = v,
+                reminderTime = if (v == Polarity.NEGATIVE) null else it.reminderTime,
+            )
+        }
 
     fun setStrictness(v: Strictness) = edit { it.copy(strictness = v) }
 
@@ -254,11 +268,9 @@ class EditViewModel(
                     habit
                 }
 
-            if (saved.reminderTime != null) {
-                Reminders.schedule(context, saved)
-            } else {
-                Reminders.cancel(context, saved.id)
-            }
+            // Unconditional: schedule cancels by itself for a habit that has no reminder
+            // time, or can no longer earn one.
+            Reminders.schedule(context, saved)
 
             _state.update { it.copy(saved = true) }
         }

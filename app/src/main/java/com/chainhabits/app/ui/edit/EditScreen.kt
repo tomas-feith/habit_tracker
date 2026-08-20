@@ -108,7 +108,11 @@ fun EditScreen(
             KindField(state, viewModel)
             CadenceField(state, viewModel)
             StrictnessField(state, viewModel)
-            ReminderField(state, viewModel, context)
+            // Negative habits get no reminder at all, so the control is not merely
+            // disabled - there is nothing to configure.
+            if (state.polarity != Polarity.NEGATIVE) {
+                ReminderField(state, viewModel, context)
+            }
 
             Button(
                 onClick = { viewModel.save(context) },

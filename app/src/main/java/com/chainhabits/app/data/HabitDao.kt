@@ -56,6 +56,12 @@ interface HabitDao {
     @Query("SELECT * FROM entries WHERE habitId = :habitId ORDER BY date")
     fun observeEntriesFor(habitId: Long): Flow<List<EntryEntity>>
 
+    @Query("SELECT * FROM entries WHERE habitId = :habitId AND date >= :from ORDER BY date")
+    suspend fun entriesFor(
+        habitId: Long,
+        from: LocalDate,
+    ): List<EntryEntity>
+
     @Query("SELECT * FROM entries WHERE habitId = :habitId AND date = :date")
     suspend fun getEntry(
         habitId: Long,
@@ -112,6 +118,9 @@ interface HabitDao {
 
     @Query("SELECT * FROM pauses WHERE habitId = :habitId ORDER BY start")
     fun observePausesFor(habitId: Long): Flow<List<PauseEntity>>
+
+    @Query("SELECT * FROM pauses WHERE habitId = :habitId ORDER BY start")
+    suspend fun pausesFor(habitId: Long): List<PauseEntity>
 
     /** The running pause for a habit, if any. At most one is ever open at a time. */
     @Query("SELECT * FROM pauses WHERE habitId = :habitId AND `end` IS NULL LIMIT 1")

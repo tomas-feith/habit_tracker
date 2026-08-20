@@ -22,8 +22,9 @@ complexity:
     # A DAO is a list of queries; splitting it would be worse than leaving it long. The
     # alternative - a DAO per table - buys nothing here, because the transactional helpers
     # (logEvent, startPause) are exactly the places where one table's writes need to be
-    # consistent, and those read best next to the queries they wrap.
-    allowedFunctionsPerInterface: 30
+    # consistent, and those read best next to the queries they wrap. The count grows by one
+    # per query, so this ceiling tracks the schema rather than any complexity.
+    allowedFunctionsPerInterface: 32
     ignorePrivate: true
   LongMethod:
     # Compose screen functions are declarative trees, not dense logic.

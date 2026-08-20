@@ -13,8 +13,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.lifecycle.lifecycleScope
+import com.chainhabits.app.notify.Reminders
 import com.chainhabits.app.ui.HabitNavHost
 import com.chainhabits.app.ui.theme.HabitTrackerTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val requestNotifications =
@@ -24,6 +27,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         askForNotificationsIfNeeded()
+
+        // Last line of defence for alarms the system dropped without telling us - a
+        // force-stop leaves no broadcast to listen for. Idempotent: re-arming an alarm that
+        // is already set replaces it with itself.
+        lifecycleScope.launch { Reminders.rescheduleAll(applicationContext) }
 
         setContent {
             HabitTrackerTheme {

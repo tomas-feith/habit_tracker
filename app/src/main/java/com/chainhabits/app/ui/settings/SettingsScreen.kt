@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.chainhabits.app.data.HabitRepository
 import com.chainhabits.app.data.RestoreResult
 import com.chainhabits.app.data.backupFileName
+import com.chainhabits.app.notify.Reminders
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -203,6 +204,10 @@ fun SettingsScreen(
                             message =
                                 when (result) {
                                     is RestoreResult.Success -> {
+                                        // Restored habits carry reminder times but no
+                                        // alarms - those live in the system, not the
+                                        // backup file, so they have to be armed here.
+                                        Reminders.rescheduleAll(context)
                                         "Restored ${result.habits.size} habits and " +
                                             "${result.entries.size} logged days."
                                     }

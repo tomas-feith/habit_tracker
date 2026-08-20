@@ -58,11 +58,21 @@
                 android:resource="@xml/habit_widget_info" />
         </receiver>
 
+        <!--
+            Alarms are dropped by the system for several reasons the app never hears about,
+            and an alarm armed for an absolute instant is simply wrong once the wall clock
+            moves under it. Each of these puts every reminder back.
+        -->
         <receiver
-            android:name=".notify.BootReceiver"
+            android:name=".notify.RescheduleReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- Alarms do not survive an app update either, and nothing else would
+                     re-arm them until the user next edited a habit. -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>
