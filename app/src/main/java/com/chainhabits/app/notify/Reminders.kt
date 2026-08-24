@@ -258,12 +258,17 @@ class ReminderReceiver : BroadcastReceiver() {
                 val habit = app.repository.getHabit(habitId) ?: return@launch
                 val today = LocalDate.now()
 
-                // The whole history, not just the week being judged: the nudge now quotes
-                // the streak back at the user (see ReminderCopy), and a windowed read would
-                // invent misses before the window and report a number that disagrees with
-                // the one on the home screen behind it. ReminderDecision ignores anything
-                // outside the period it judges, so the wider read costs it nothing.
-                val entries = app.repository.entriesFor(habitId, HabitEvaluator.BEGINNING_OF_TIME)
+                // From the habit's own start, not just the week being judged: the nudge now
+                // quotes the streak back at the user (see ReminderCopy), and a windowed read
+                // would invent misses before the window and report a number that disagrees
+                // with the one on the home screen behind it. ReminderDecision ignores
+                // anything outside the period it judges, so the wider read costs it nothing.
+                //
+                // habit.createdOn rather than BEGINNING_OF_TIME because it is the real lower
+                // bound - the evaluator starts there and ignores anything earlier - and this
+                // runs inside a broadcast, which is the one place in the app that is on a
+                // clock and cannot afford to read rows it will throw away.
+                val entries = app.repository.entriesFor(habitId, habit.createdOn)
                 val pauses = app.repository.pausesFor(habitId)
 
                 val owed =

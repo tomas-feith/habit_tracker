@@ -77,6 +77,7 @@ import com.chainhabits.app.ui.components.QuotaPips
 import com.chainhabits.app.ui.components.rememberReorderState
 import com.chainhabits.app.ui.components.reorderableItem
 import com.chainhabits.app.ui.theme.MosaicTheme
+import kotlinx.coroutines.delay
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import androidx.compose.ui.text.intl.Locale as ComposeLocale
@@ -103,6 +104,11 @@ fun HomeScreen(
             // Persist when the drag ends rather than on every swap mid-gesture.
             onDrop = { viewModel.commitOrder() },
         )
+
+    // Held above the list rather than inside a card: a LazyColumn drops the state of any
+    // row scrolled out of view, so a card that owned this would silently miss the rarest
+    // event in the app precisely when the user happened to be looking elsewhere.
+    val celebrating = rememberRecordCelebrations(state.rows, loaded = state.loaded)
 
     // Without this the app keeps yesterday's date after being left open overnight, and
     // taps would be logged against the wrong day.
@@ -185,6 +191,7 @@ fun HomeScreen(
                 HabitCard(
                     row = row,
                     dragging = reorder.draggingKey == row.habit.id,
+                    celebrating = row.habit.id in celebrating,
                     onLog = { viewModel.logEvent(row.habit) },
                     onUndo = { viewModel.removeEvent(row.habit) },
                     onOpen = { onOpenHabit(row.habit.id) },
@@ -246,13 +253,14 @@ private fun NeverMissTwiceBanner(atRisk: List<HabitRowState>) {
 private fun HabitCard(
     row: HabitRowState,
     dragging: Boolean,
+    celebrating: Boolean,
     onLog: () -> Unit,
     onUndo: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val lift by animateFloatAsState(if (dragging) 1.02f else 1f, label = "lift")
-    val recordPulse = rememberRecordPulse(row.isRecord)
+    val recordPulse = rememberRecordPulse(celebrating)
 
     Card(
         modifier =
@@ -356,34 +364,77 @@ private fun HeroCount(
 }
 
 /**
- * The scale of the hero number, which swells once when the habit reaches its best run ever.
+ * The habits that have just gone past their best run, and should be congratulated for it.
  *
  * The payoff for a habit itself is months away, so the app owes something back at the moment
  * one is earned - the same argument that already buys [CheckTile] its spring, spent here on
  * the one event in the app that is genuinely rare.
  *
- * Fired on the *transition* into record territory rather than for as long as the record
+ * Fires on the *transition* into record territory rather than for as long as the record
  * stands: a run that is the longest ever today is still the longest ever tomorrow, and
  * something that celebrates every single day is not a celebration, it is a background
- * colour. Seeded from the current value on first composition, so scrolling a record-holding
- * habit back into view - or opening the app to one - stays silent.
+ * colour.
+ *
+ * Lives at screen scope for two reasons. The haptic is the half of the celebration that does
+ * not need the row to be on screen, so firing it here means a record set while the user is
+ * scrolled elsewhere is still felt rather than lost with the recycled card. And the record
+ * already acknowledged is remembered across recycling, so scrolling a record-holding habit
+ * away and back does not congratulate it twice.
  */
 @Composable
-private fun rememberRecordPulse(isRecord: Boolean): Float {
+private fun rememberRecordCelebrations(
+    rows: List<HabitRowState>,
+    loaded: Boolean,
+): Set<Long> {
     val haptics = LocalHapticFeedback.current
-    val scale = remember { Animatable(1f) }
-    var celebrated by remember { mutableStateOf(isRecord) }
+    val acknowledged = remember { mutableSetOf<Long>() }
+    var seeded by remember { mutableStateOf(false) }
+    var pulsing by remember { mutableStateOf(emptySet<Long>()) }
 
-    LaunchedEffect(isRecord) {
-        if (!isRecord) {
-            // The run ended. Arm it again, so the next record still lands.
-            celebrated = false
+    // Keyed by the ids rather than by the list, which is a new instance on every write to
+    // any habit and would restart this effect constantly.
+    val holders =
+        remember(rows) {
+            rows.filter { it.celebratesRecord }.mapTo(mutableSetOf()) { it.habit.id }
+        }
+
+    LaunchedEffect(holders, loaded) {
+        // The first frame carries no rows yet, and treating that emptiness as "nobody holds
+        // a record" would make every record look freshly set the moment the data arrived.
+        if (!loaded) return@LaunchedEffect
+
+        if (!seeded) {
+            // Whatever already held a record when the screen opened was not set just now.
+            seeded = true
+            acknowledged += holders
             return@LaunchedEffect
         }
-        if (celebrated) return@LaunchedEffect
-        celebrated = true
+
+        // A habit that lost its record is armed again for the next one.
+        acknowledged.retainAll(holders)
+
+        val fresh = holders - acknowledged
+        if (fresh.isEmpty()) return@LaunchedEffect
+        acknowledged += fresh
 
         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        pulsing = fresh
+        // Held briefly rather than cleared at once, so a card scrolled into view just after
+        // the record landed still gets its flourish instead of appearing already finished.
+        delay(RECORD_PULSE_WINDOW_MS)
+        pulsing = emptySet()
+    }
+    return pulsing
+}
+
+/** The scale of one hero number, which swells when [celebrating] turns true. */
+@Composable
+private fun rememberRecordPulse(celebrating: Boolean): Float {
+    val scale = remember { Animatable(1f) }
+
+    LaunchedEffect(celebrating) {
+        if (!celebrating) return@LaunchedEffect
+        scale.snapTo(1f)
         scale.animateTo(RECORD_PULSE_SCALE, tween(RECORD_PULSE_RISE_MS))
         scale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
     }
@@ -567,6 +618,9 @@ private const val RECORD_PULSE_SCALE = 1.22f
 
 /** Fast on the rise so it reads as a pop rather than a zoom; the spring handles the fall. */
 private const val RECORD_PULSE_RISE_MS = 130
+
+/** How long a fresh record stays worth animating, for a card scrolled into view just after. */
+private const val RECORD_PULSE_WINDOW_MS = 1_500L
 
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {

@@ -57,6 +57,7 @@ class Timeline internal constructor(
             currentStreak = live.streak,
             chainLength = live.chain,
             longestStreak = totals.longestRun,
+            previousBest = totals.bestEndedRun,
             completionRate = cells.completionRate(),
             atRisk = isAtRisk(),
         )
@@ -64,11 +65,20 @@ class Timeline internal constructor(
 
     private data class Totals(
         val longestRun: Int,
+        val bestEndedRun: Int,
     )
 
-    /** Single forward pass for the lifetime aggregates. */
+    /**
+     * Single forward pass for the lifetime aggregates.
+     *
+     * The two numbers differ only in whether the run still in progress is allowed to count.
+     * [Totals.longestRun] is the honest lifetime maximum and includes it; [Totals.bestEndedRun]
+     * deliberately does not, because it exists to answer "what is the run in progress trying
+     * to beat", and a run cannot be the record it is chasing.
+     */
     private fun tally(): Totals {
         var longest = 0
+        var bestEnded = 0
         var run = 0
 
         for (cell in cells) {
@@ -79,6 +89,9 @@ class Timeline internal constructor(
                 }
 
                 CellState.MISSED_ONCE, CellState.BROKEN -> {
+                    // The run stopped here, so from now on it is something to be beaten
+                    // rather than something being built.
+                    if (run > bestEnded) bestEnded = run
                     run = 0
                 }
 
@@ -86,7 +99,7 @@ class Timeline internal constructor(
                 CellState.PENDING, CellState.NOT_SCHEDULED -> {}
             }
         }
-        return Totals(longestRun = longest)
+        return Totals(longestRun = longest, bestEndedRun = bestEnded)
     }
 
     private data class Live(

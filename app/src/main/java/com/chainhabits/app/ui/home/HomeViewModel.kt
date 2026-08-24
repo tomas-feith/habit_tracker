@@ -12,6 +12,7 @@ import com.chainhabits.app.domain.Cell
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.HabitStats
+import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.headlineFor
 import com.chainhabits.app.domain.isRecord
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,12 +45,23 @@ data class HabitRowState(
     val headlineCount: Int get() = stats.headlineFor(habit)
 
     /**
-     * True when this run has reached the habit's longest ever.
+     * True when this run has gone past the habit's longest ever.
      *
      * Paused habits are excluded because a record held by a suspended habit is not being
      * set by anything the user is doing, and celebrating it would be celebrating nothing.
      */
     val isRecord: Boolean get() = stats.isRecord && !isPaused
+
+    /**
+     * Whether reaching that record is worth a flourish, as opposed to just worth saying.
+     *
+     * Positive habits only. A negative habit is never *done* - a clean period is the default
+     * and the streak grows by the calendar rolling over - so its record lands at midnight
+     * rather than in response to anything the user did, and a phone buzzing to congratulate
+     * someone for time passing is a celebration of nothing. The caption still says "best
+     * ever", because that part is simply true.
+     */
+    val celebratesRecord: Boolean get() = isRecord && habit.polarity == Polarity.POSITIVE
 
     /** "days" or "weeks", singular when the count is one. */
     val headlineUnit: String

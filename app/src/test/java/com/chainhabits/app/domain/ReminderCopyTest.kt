@@ -30,11 +30,13 @@ class ReminderCopyTest {
         currentStreak: Int = 0,
         chainLength: Int = currentStreak,
         longestStreak: Int = currentStreak,
+        previousBest: Int = longestStreak,
         atRisk: Boolean = false,
     ) = HabitStats(
         currentStreak = currentStreak,
         chainLength = chainLength,
         longestStreak = longestStreak,
+        previousBest = previousBest,
         completionRate = 1f,
         atRisk = atRisk,
     )
@@ -80,9 +82,23 @@ class ReminderCopyTest {
     }
 
     @Test
-    fun `a run at its longest ever says so`() {
-        val text = body(habit(), stats(currentStreak = 21, chainLength = 21, longestStreak = 21))
+    fun `a run past its longest ever says so`() {
+        val text =
+            body(
+                habit(),
+                stats(currentStreak = 21, chainLength = 21, longestStreak = 21, previousBest = 14),
+            )
         assertEquals("Day 21, your longest run yet. Still time today.", text)
+    }
+
+    @Test
+    fun `merely equalling an old best is not called a record`() {
+        val text =
+            body(
+                habit(),
+                stats(currentStreak = 21, chainLength = 21, longestStreak = 21, previousBest = 21),
+            )
+        assertEquals("Day 21. Still time to keep the chain.", text)
     }
 
     @Test

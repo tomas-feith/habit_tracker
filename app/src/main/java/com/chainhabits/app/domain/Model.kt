@@ -173,6 +173,16 @@ data class HabitStats(
      */
     val chainLength: Int,
     val longestStreak: Int,
+    /**
+     * The longest run that has already *ended*, which is the record the run in progress is
+     * trying to beat.
+     *
+     * Distinct from [longestStreak], which includes the live run and therefore equals
+     * [currentStreak] for as long as the habit is at its best - making "am I setting a
+     * record" unanswerable from it. Zero for a habit that has never broken a run, where
+     * there is no previous best because there is no previous run.
+     */
+    val previousBest: Int,
     /** Good periods as a fraction of scheduled, settled periods. */
     val completionRate: Float,
     /**
@@ -198,12 +208,24 @@ fun HabitStats.headlineFor(habit: Habit): Int =
     if (habit.strictness == Strictness.STRICT) currentStreak else chainLength
 
 /**
- * True when the current run has reached the longest this habit has ever managed.
+ * The shortest run that counts as a record.
  *
- * Greater-or-equal rather than equal because [HabitStats.longestStreak] only counts settled
- * good periods: a negative habit's provisionally-clean today already counts toward
- * [HabitStats.currentStreak] but cannot yet count toward the record, so the moment the
- * record is actually being set would otherwise read as false.
+ * A habit that has never broken a run has a [HabitStats.previousBest] of zero, so without a
+ * floor its very first period would qualify - and "your best ever" on day one is true,
+ * worthless, and reads as sarcasm. The floor is deliberately low: the first real run is the
+ * most meaningful one a habit ever has, and it should not have to wait for a broken chain
+ * to be acknowledged.
+ */
+private const val RECORD_FLOOR = 3
+
+/**
+ * True when the current run has gone past the longest this habit has ever managed.
+ *
+ * Strictly greater than [HabitStats.previousBest] rather than compared against
+ * [HabitStats.longestStreak]: the latter counts the live run, so it equals
+ * [HabitStats.currentStreak] throughout a record-holding run and can never express
+ * "beaten". Merely equalling an old best is not a record either, which is the other thing
+ * that comparison got wrong.
  */
 val HabitStats.isRecord: Boolean
-    get() = currentStreak > 0 && currentStreak >= longestStreak
+    get() = currentStreak >= RECORD_FLOOR && currentStreak > previousBest
