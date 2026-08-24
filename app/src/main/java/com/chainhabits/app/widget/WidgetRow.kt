@@ -8,7 +8,7 @@ import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.Pause
 import com.chainhabits.app.domain.Polarity
-import com.chainhabits.app.domain.Strictness
+import com.chainhabits.app.domain.headlineFor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -36,6 +36,14 @@ data class WidgetRow(
     val polarity: Polarity,
     /** True while a pause is running, so the row reads as suspended rather than undone. */
     val isPaused: Boolean,
+    /**
+     * True when one more miss would break the chain.
+     *
+     * The widget's whole advantage over a notification is that it is already on screen, so
+     * this is the one thing it can say that nothing else can say for free: the warning sits
+     * in front of the user all day instead of arriving once and being swiped away.
+     */
+    val atRisk: Boolean,
 ) {
     /** Whether the current period's bar is already met. */
     val isSatisfied: Boolean get() = target?.let { count >= it } ?: (count > 0)
@@ -67,12 +75,43 @@ data class WidgetRow(
     val subtitle: String
         get() =
             when {
-                isPaused -> "paused"
-                target != null && target > 1 -> "$count of $target this week"
-                headline == 0 -> "no chain yet"
-                isWeekly -> "$headline ${plural(headline, "week")}"
-                else -> "$headline ${plural(headline, "day")}"
+                isPaused -> {
+                    "paused"
+                }
+
+                // At risk outranks the plain count, including for a weekly habit, where the
+                // quota is kept alongside it because it is the thing you would act on.
+                isAtRiskNow && target != null && target > 1 -> {
+                    "$count of $target, chain at risk"
+                }
+
+                isAtRiskNow -> {
+                    "$headline ${plural(headline, unit)} at risk"
+                }
+
+                target != null && target > 1 -> {
+                    "$count of $target this week"
+                }
+
+                headline == 0 -> {
+                    "no chain yet"
+                }
+
+                else -> {
+                    "$headline ${plural(headline, unit)}"
+                }
             }
+
+    /**
+     * Whether the row should be drawn as in danger *right now*.
+     *
+     * A period already satisfied is not at risk however the last one settled, so a habit
+     * ticked at breakfast stops shouting for the rest of the day - a warning that survives
+     * the thing that resolved it is the fastest way to teach someone to ignore warnings.
+     */
+    val isAtRiskNow: Boolean get() = atRisk && !isPaused && !isSatisfied
+
+    private val unit: String get() = if (isWeekly) "week" else "day"
 
     private fun plural(
         n: Int,
@@ -105,11 +144,10 @@ private fun Habit.toWidgetRow(
         state = timeline.current?.state ?: CellState.PENDING,
         count = timeline.currentCount,
         target = (cadence as? Cadence.TimesPerWeek)?.target,
-        // Strict habits lead with the honest streak, where "days since" is the whole
-        // point; standard habits lead with the chain, which survives an isolated miss.
-        headline = if (strictness == Strictness.STRICT) stats.currentStreak else stats.chainLength,
+        headline = stats.headlineFor(this),
         isWeekly = isWeekly,
         polarity = polarity,
         isPaused = pauses.any { it.isOpenEnded },
+        atRisk = stats.atRisk,
     )
 }

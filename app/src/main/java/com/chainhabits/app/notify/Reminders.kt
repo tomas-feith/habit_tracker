@@ -16,6 +16,7 @@ import com.chainhabits.app.R
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.Polarity
+import com.chainhabits.app.domain.ReminderCopy
 import com.chainhabits.app.domain.ReminderDecision
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -189,6 +190,7 @@ object Reminders {
     fun notify(
         context: Context,
         habit: Habit,
+        copy: ReminderCopy.Text,
     ) {
         val open =
             PendingIntent.getActivity(
@@ -200,13 +202,17 @@ object Reminders {
             )
 
         // Only positive habits reach here, so there is one wording rather than one per
-        // polarity - see ReminderDecision for why the negative case was dropped.
+        // polarity - see ReminderDecision for why the negative case was dropped. What that
+        // wording *is* lives in ReminderCopy, which is testable; this method only draws it.
         val notification =
             NotificationCompat
                 .Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(habit.name)
-                .setContentText("Still time today.")
+                .setContentTitle(copy.title)
+                .setContentText(copy.body)
+                // The body runs past one line on a narrow screen, and a stake the user has
+                // to expand the notification to read is not a stake.
+                .setStyle(NotificationCompat.BigTextStyle().bigText(copy.body))
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build()
@@ -252,20 +258,29 @@ class ReminderReceiver : BroadcastReceiver() {
                 val habit = app.repository.getHabit(habitId) ?: return@launch
                 val today = LocalDate.now()
 
+                // The whole history, not just the week being judged: the nudge now quotes
+                // the streak back at the user (see ReminderCopy), and a windowed read would
+                // invent misses before the window and report a number that disagrees with
+                // the one on the home screen behind it. ReminderDecision ignores anything
+                // outside the period it judges, so the wider read costs it nothing.
+                val entries = app.repository.entriesFor(habitId, HabitEvaluator.BEGINNING_OF_TIME)
+                val pauses = app.repository.pausesFor(habitId)
+
                 val owed =
                     ReminderDecision.shouldNotify(
                         habit = habit,
-                        // The week containing today is the widest window any cadence
-                        // judges, so it covers all of them.
-                        entries =
-                            app.repository.entriesFor(
-                                habitId,
-                                HabitEvaluator.weekStart(today),
-                            ),
-                        pauses = app.repository.pausesFor(habitId),
+                        entries = entries,
+                        pauses = pauses,
                         today = today,
                     )
-                if (owed) Reminders.notify(context, habit)
+                if (owed) {
+                    val timeline = HabitEvaluator.timeline(habit, entries, today, pauses)
+                    Reminders.notify(
+                        context,
+                        habit,
+                        ReminderCopy.forHabit(habit, timeline.stats, timeline.currentCount),
+                    )
+                }
             } finally {
                 pending.finish()
             }

@@ -103,6 +103,7 @@ class HabitWidget : GlanceAppWidget() {
     private fun Header(rows: List<WidgetRow>?) {
         val done = rows?.count { it.isSatisfied } ?: 0
         val total = rows?.size ?: 0
+        val atRisk = rows?.count { it.isAtRiskNow } ?: 0
         Row(
             modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity<MainActivity>()),
             verticalAlignment = Alignment.CenterVertically,
@@ -117,6 +118,20 @@ class HabitWidget : GlanceAppWidget() {
                     ),
             )
             Spacer(GlanceModifier.defaultWeight())
+            // Ahead of the done/total count, because it is the only number here worth
+            // reading from across the room.
+            if (atRisk > 0) {
+                Text(
+                    text = "$atRisk at risk",
+                    style =
+                        TextStyle(
+                            color = WidgetColors.missedOnce,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                )
+                Spacer(GlanceModifier.width(8.dp))
+            }
             if (total > 0) {
                 Text(
                     text = "$done/$total",
@@ -194,7 +209,7 @@ class HabitWidget : GlanceAppWidget() {
                 GlanceModifier
                     .size(26.dp)
                     .cornerRadius(8.dp)
-                    .background(if (row.isFilled) tileColor(row) else WidgetColors.tileEmpty),
+                    .background(if (row.isFilled) tileColor(row) else emptyTileColor(row)),
             contentAlignment = Alignment.Center,
         ) {
             if (row.showsPartialCount) {
@@ -217,6 +232,19 @@ class HabitWidget : GlanceAppWidget() {
                             fontWeight = FontWeight.Bold,
                         ),
                 )
+            } else if (row.isAtRiskNow) {
+                // The tint alone reads as decoration on a busy wallpaper, and is invisible
+                // to anyone who cannot separate it from the surface behind it. The mark is
+                // what makes the warning survive both.
+                Text(
+                    text = "!",
+                    style =
+                        TextStyle(
+                            color = WidgetColors.missedOnce,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                )
             }
         }
     }
@@ -227,6 +255,10 @@ class HabitWidget : GlanceAppWidget() {
             CellState.MISSED_ONCE -> WidgetColors.missedOnce
             else -> WidgetColors.done
         }
+
+    /** An undone period: tinted amber when the chain is on the line, otherwise blank. */
+    private fun emptyTileColor(row: WidgetRow) =
+        if (row.isAtRiskNow) WidgetColors.tileAtRisk else WidgetColors.tileEmpty
 
     /** TalkBack reads the whole row, since the tile alone is meaningless out loud. */
     private fun describe(row: WidgetRow): String {

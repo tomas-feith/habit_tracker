@@ -12,7 +12,8 @@ import com.chainhabits.app.domain.Cell
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
 import com.chainhabits.app.domain.HabitStats
-import com.chainhabits.app.domain.Strictness
+import com.chainhabits.app.domain.headlineFor
+import com.chainhabits.app.domain.isRecord
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,18 +40,16 @@ data class HabitRowState(
     val isSatisfied: Boolean
         get() = weeklyTarget?.let { currentCount >= it } ?: (currentCount > 0)
 
+    /** The number the row leads with. See [headlineFor]. */
+    val headlineCount: Int get() = stats.headlineFor(habit)
+
     /**
-     * The number the row leads with. Strict habits lead with the honest streak, where
-     * "days since" is the whole point; standard habits lead with the chain, so one sick
-     * day doesn't wipe the board and take the motivation with it.
+     * True when this run has reached the habit's longest ever.
+     *
+     * Paused habits are excluded because a record held by a suspended habit is not being
+     * set by anything the user is doing, and celebrating it would be celebrating nothing.
      */
-    val headlineCount: Int
-        get() =
-            if (habit.strictness == Strictness.STRICT) {
-                stats.currentStreak
-            } else {
-                stats.chainLength
-            }
+    val isRecord: Boolean get() = stats.isRecord && !isPaused
 
     /** "days" or "weeks", singular when the count is one. */
     val headlineUnit: String

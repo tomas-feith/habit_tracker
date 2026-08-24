@@ -29,4 +29,17 @@ internal object WidgetColors {
     val broken = ColorProvider(day = LightMosaicColors.broken, night = DarkMosaicColors.broken)
     val tileEmpty =
         ColorProvider(day = LightMosaicColors.notScheduled, night = DarkMosaicColors.notScheduled)
+
+    /**
+     * The empty tile of a habit one miss from a broken chain.
+     *
+     * The mosaic's warning surface rather than its warning ink: an undone period is not a
+     * miss yet, so the tile is tinted rather than filled. Filling it amber would claim the
+     * day had already gone wrong at eight in the morning.
+     */
+    val tileAtRisk =
+        ColorProvider(
+            day = LightMosaicColors.warningSurface,
+            night = DarkMosaicColors.warningSurface,
+        )
 }

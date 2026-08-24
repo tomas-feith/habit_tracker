@@ -182,3 +182,28 @@ data class HabitStats(
      */
     val atRisk: Boolean,
 )
+
+/**
+ * The number a habit leads with, wherever it is shown.
+ *
+ * Strict habits lead with the honest streak, where "days since" is the whole point;
+ * standard habits lead with the chain, which survives an isolated miss so one sick day
+ * doesn't wipe the board and take the motivation with it.
+ *
+ * Shared rather than re-derived per surface: the home row, the widget row and the reminder
+ * copy all quote this number at the user, and three copies of the rule is three chances for
+ * the notification to claim a different streak from the one on the screen behind it.
+ */
+fun HabitStats.headlineFor(habit: Habit): Int =
+    if (habit.strictness == Strictness.STRICT) currentStreak else chainLength
+
+/**
+ * True when the current run has reached the longest this habit has ever managed.
+ *
+ * Greater-or-equal rather than equal because [HabitStats.longestStreak] only counts settled
+ * good periods: a negative habit's provisionally-clean today already counts toward
+ * [HabitStats.currentStreak] but cannot yet count toward the record, so the moment the
+ * record is actually being set would otherwise read as false.
+ */
+val HabitStats.isRecord: Boolean
+    get() = currentStreak > 0 && currentStreak >= longestStreak

@@ -1,9 +1,11 @@
 package com.chainhabits.app.ui.home
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,12 +46,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -243,6 +252,7 @@ private fun HabitCard(
     modifier: Modifier = Modifier,
 ) {
     val lift by animateFloatAsState(if (dragging) 1.02f else 1f, label = "lift")
+    val recordPulse = rememberRecordPulse(row.isRecord)
 
     Card(
         modifier =
@@ -270,7 +280,7 @@ private fun HabitCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(6.dp))
-                    HeroCount(row)
+                    HeroCount(row, pulse = recordPulse)
                 }
                 Spacer(Modifier.width(12.dp))
                 LogControl(row, onLog, onUndo)
@@ -305,7 +315,10 @@ private fun HabitCard(
  * tucked into a grey caption.
  */
 @Composable
-private fun HeroCount(row: HabitRowState) {
+private fun HeroCount(
+    row: HabitRowState,
+    pulse: Float,
+) {
     val colors = MosaicTheme.colors
     val starting = row.headlineCount == 0
 
@@ -314,6 +327,14 @@ private fun HeroCount(row: HabitRowState) {
             text = "${row.headlineCount}",
             style = MaterialTheme.typography.displaySmall,
             color = if (starting) MaterialTheme.colorScheme.onSurfaceVariant else colors.done,
+            // Scaled about its bottom-left so the flourish grows the number away from the
+            // baseline it shares with the unit label, rather than shoving the label around.
+            modifier =
+                Modifier.graphicsLayer {
+                    scaleX = pulse
+                    scaleY = pulse
+                    transformOrigin = TransformOrigin(0f, 1f)
+                },
         )
         Spacer(Modifier.width(8.dp))
         Column(Modifier.padding(bottom = 6.dp)) {
@@ -322,16 +343,51 @@ private fun HeroCount(row: HabitRowState) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            caption(row)?.let {
+            caption(row)?.let { caption ->
                 Text(
-                    text = it,
+                    text = caption.text,
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.missedOnce,
+                    color = if (caption.isGood) colors.done else colors.missedOnce,
                     fontWeight = FontWeight.Medium,
                 )
             }
         }
     }
+}
+
+/**
+ * The scale of the hero number, which swells once when the habit reaches its best run ever.
+ *
+ * The payoff for a habit itself is months away, so the app owes something back at the moment
+ * one is earned - the same argument that already buys [CheckTile] its spring, spent here on
+ * the one event in the app that is genuinely rare.
+ *
+ * Fired on the *transition* into record territory rather than for as long as the record
+ * stands: a run that is the longest ever today is still the longest ever tomorrow, and
+ * something that celebrates every single day is not a celebration, it is a background
+ * colour. Seeded from the current value on first composition, so scrolling a record-holding
+ * habit back into view - or opening the app to one - stays silent.
+ */
+@Composable
+private fun rememberRecordPulse(isRecord: Boolean): Float {
+    val haptics = LocalHapticFeedback.current
+    val scale = remember { Animatable(1f) }
+    var celebrated by remember { mutableStateOf(isRecord) }
+
+    LaunchedEffect(isRecord) {
+        if (!isRecord) {
+            // The run ended. Arm it again, so the next record still lands.
+            celebrated = false
+            return@LaunchedEffect
+        }
+        if (celebrated) return@LaunchedEffect
+        celebrated = true
+
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        scale.animateTo(RECORD_PULSE_SCALE, tween(RECORD_PULSE_RISE_MS))
+        scale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+    }
+    return scale.value
 }
 
 /**
@@ -458,18 +514,32 @@ private fun CheckTile(
     }
 }
 
-/** The supporting line under the hero number, when there is something worth saying. */
-private fun caption(row: HabitRowState): String? =
+/**
+ * The supporting line under the hero number.
+ *
+ * [isGood] rather than one colour for all of them: these were drawn uniformly in the
+ * mosaic's amber, which made "clean" - unambiguously good news - read as a warning.
+ */
+private data class Caption(
+    val text: String,
+    val isGood: Boolean,
+)
+
+/** What to say under the hero number, when there is something worth saying. */
+private fun caption(row: HabitRowState): Caption? =
     when {
         // Says why the row is quiet, so a paused habit does not read as a stalled one.
-        row.isPaused -> "paused"
+        row.isPaused -> Caption("paused", isGood = false)
 
-        row.stats.atRisk -> "don't miss twice"
+        row.stats.atRisk -> Caption("don't miss twice", isGood = false)
 
-        row.headlineCount == 0 -> "starting over"
+        // Outranks "clean" below, which is true of any unbroken run and so says less.
+        row.isRecord -> Caption("best ever", isGood = true)
+
+        row.headlineCount == 0 -> Caption("starting over", isGood = false)
 
         row.habit.strictness == Strictness.STRICT &&
-            row.habit.polarity == Polarity.NEGATIVE -> "clean"
+            row.habit.polarity == Polarity.NEGATIVE -> Caption("clean", isGood = true)
 
         else -> null
     }
@@ -491,6 +561,12 @@ private fun quotaLabel(
             "${row.currentCount} of $target this week"
         }
     }
+
+/** How far the hero number swells when a record lands. */
+private const val RECORD_PULSE_SCALE = 1.22f
+
+/** Fast on the rise so it reads as a pop rather than a zoom; the spring handles the fall. */
+private const val RECORD_PULSE_RISE_MS = 130
 
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
