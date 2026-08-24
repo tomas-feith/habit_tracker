@@ -1,6 +1,7 @@
 package com.chainhabits.app.ui.home
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isOff
@@ -274,6 +275,128 @@ class HomeScreenTest {
         compose.onNodeWithContentDescription("Resume all habits").performClick()
         awaitDescription("Pause all habits")
         assertNull(runBlocking { db.habitDao().pausedHabitIds().firstOrNull() })
+    }
+
+    // --- The record caption -------------------------------------------------------
+    //
+    // Driven through the real evaluator rather than a stubbed HabitStats, because the bug
+    // these cover was in how the stats were *derived*: longestStreak counts the run in
+    // progress, so a hand-built stats object would happily assert a record the real
+    // evaluator could never produce.
+    //
+    // Only the caption is covered. The other half of the celebration - the pulse on the
+    // hero number and its haptic - carries no semantics and is invisible to this harness.
+    // That is also why the caption exists: it is the part of the flourish a screen reader
+    // can reach.
+
+    /** Logs [days] as offsets back from today, so the runs read the way they are described. */
+    private fun log(
+        id: Long,
+        days: Iterable<Long>,
+    ) = runBlocking {
+        val habit = repository.getHabit(id)!!
+        days.forEach { repository.logEvent(habit, today.minusDays(it)) }
+    }
+
+    @Test
+    fun aRunPastItsPreviousBestIsCalledTheBestEver() {
+        val id = add("Read", createdDaysAgo = 20)
+        // A five-day run that ends in two misses, then fourteen days up to today.
+        log(id, (16L..20L))
+        log(id, (0L..13L))
+
+        show()
+        awaitText("Read")
+
+        // 14 beats the 5 that already ended, so this is genuinely a new best.
+        compose.onNodeWithText("14").assertIsDisplayed()
+        compose.onNodeWithText("best ever").assertIsDisplayed()
+    }
+
+    @Test
+    fun merelyEquallingThePreviousBestIsNotCalledTheBestEver() {
+        val id = add("Read", createdDaysAgo = 20)
+        // A five-day run that ended, and a five-day run in progress. Exactly equal.
+        log(id, (16L..20L))
+        log(id, (0L..4L))
+
+        show()
+        awaitText("Read")
+        compose.onNodeWithText("5").assertIsDisplayed()
+
+        // The bug this pins: longestStreak includes the live run, so it reads 5 here just
+        // as it does when the record really is being broken. Comparing against it called
+        // this a record.
+        compose.onNodeWithText("best ever").assertDoesNotExist()
+    }
+
+    @Test
+    fun theFirstDayOfABrandNewHabitIsNotCalledTheBestEver() {
+        val id = add("Read", createdDaysAgo = 0)
+        log(id, listOf(0L))
+
+        show()
+        awaitText("Read")
+        compose.onNodeWithText("1").assertIsDisplayed()
+
+        // Trivially the best it has ever done, and worth nothing.
+        compose.onNodeWithText("best ever").assertDoesNotExist()
+    }
+
+    @Test
+    fun aFirstRunIsCalledTheBestEverOnceItIsWorthSaying() {
+        val id = add("Read", createdDaysAgo = 2)
+        log(id, (0L..2L))
+
+        show()
+        awaitText("Read")
+
+        // Nothing broken behind it, so there is no previous best to beat - the floor is
+        // what makes this the first moment worth marking.
+        compose.onNodeWithText("3").assertIsDisplayed()
+        compose.onNodeWithText("best ever").assertIsDisplayed()
+    }
+
+    @Test
+    fun aNegativeHabitIsStillToldWhenItIsAtItsBest() {
+        // Never slipped since it was created, so every settled day is clean.
+        add("No takeaway", polarity = Polarity.NEGATIVE, strictness = Strictness.STRICT)
+
+        show()
+        awaitText("No takeaway")
+
+        // The caption is not gated on polarity even though the flourish is: a negative
+        // habit's record arrives at midnight rather than in response to anything the user
+        // did, which is a reason not to buzz about it, not a reason to hide it.
+        compose.onNodeWithText("best ever").assertIsDisplayed()
+    }
+
+    @Test
+    fun aNegativeHabitRebuildingAfterASlipReadsAsCleanRatherThanBest() {
+        val id = add("No takeaway", polarity = Polarity.NEGATIVE, strictness = Strictness.STRICT)
+        log(id, listOf(1L))
+
+        show()
+        awaitText("No takeaway")
+
+        // Yesterday's slip ended a long clean run, so the day since it is nowhere near a
+        // record and the row falls back to saying what it is rather than what it achieved.
+        compose.onNodeWithText("clean").assertIsDisplayed()
+        compose.onNodeWithText("best ever").assertDoesNotExist()
+    }
+
+    @Test
+    fun aPausedHabitIsNotCongratulatedForStandingStill() {
+        val id = add("Read", createdDaysAgo = 20)
+        log(id, (0L..13L))
+        runBlocking { repository.pauseHabit(id, today) }
+
+        show()
+        awaitText("paused")
+
+        // A record held by a suspended habit is not being set by anything the user is
+        // doing, so there is nothing to celebrate.
+        compose.onNodeWithText("best ever").assertDoesNotExist()
     }
 
     private fun awaitDescription(description: String) =
