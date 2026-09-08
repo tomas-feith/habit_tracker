@@ -19,6 +19,7 @@ class WidgetRowTest {
         headline: Int = 0,
         isWeekly: Boolean = false,
         isPaused: Boolean = false,
+        pauseReason: String? = null,
         atRisk: Boolean = false,
     ) = WidgetRow(
         id = 1,
@@ -30,6 +31,7 @@ class WidgetRowTest {
         isWeekly = isWeekly,
         polarity = Polarity.POSITIVE,
         isPaused = isPaused,
+        pauseReason = pauseReason,
         atRisk = atRisk,
     )
 
@@ -48,6 +50,14 @@ class WidgetRowTest {
         // to stop reading it.
         assertFalse(row.isAtRiskNow)
         assertEquals("12 days", row.subtitle)
+    }
+
+    @Test
+    fun `a paused habit says why, when the user said`() {
+        val row = row(isPaused = true, pauseReason = "Injured leg")
+
+        // The launcher is where "paused" is read most and explained least.
+        assertEquals("paused - Injured leg", row.subtitle)
     }
 
     @Test

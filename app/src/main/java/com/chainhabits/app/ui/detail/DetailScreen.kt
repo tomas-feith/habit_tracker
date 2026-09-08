@@ -95,20 +95,10 @@ fun DetailScreen(
                     }
                 },
                 actions = {
-                    // Pausing lives here rather than on the home row: the home row's
-                    // long-press is already the drag handle, and suspending a habit is a
-                    // deliberate act that deserves a deliberate place.
-                    IconButton(onClick = { viewModel.setPaused(!state.isPaused) }) {
-                        Icon(
-                            if (state.isPaused) {
-                                Icons.Default.PlayCircleOutline
-                            } else {
-                                Icons.Default.PauseCircleOutline
-                            },
-                            contentDescription =
-                                if (state.isPaused) "Resume habit" else "Pause habit",
-                        )
-                    }
+                    PauseAction(
+                        paused = state.isPaused,
+                        onToggle = { viewModel.setPaused(!state.isPaused) },
+                    )
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit habit")
                     }
@@ -135,6 +125,11 @@ fun DetailScreen(
             // Directly under the headline: the note is the "why", and the why is worth
             // reading before the numbers, not after them.
             habit.note?.let { NoteCard(it) }
+
+            // Above the numbers, because it is the reason they have stopped moving.
+            if (state.isPaused) {
+                PausedCard(since = state.pausedSince, reason = state.pauseReason)
+            }
 
             Section("Recent") {
                 MosaicStrip(cells = state.periodCells, cellHeight = 18.dp)
@@ -577,6 +572,76 @@ private fun NoteCard(note: String) {
         )
     }
 }
+
+/**
+ * The pause toggle.
+ *
+ * It lives in the app bar rather than on the home row: the home row's long-press is
+ * already the drag handle, and suspending a habit is a deliberate act that deserves a
+ * deliberate place.
+ */
+@Composable
+private fun PauseAction(
+    paused: Boolean,
+    onToggle: () -> Unit,
+) {
+    IconButton(onClick = onToggle) {
+        Icon(
+            if (paused) Icons.Default.PlayCircleOutline else Icons.Default.PauseCircleOutline,
+            contentDescription = if (paused) "Resume habit" else "Pause habit",
+        )
+    }
+}
+
+/**
+ * Why this habit's numbers are standing still.
+ *
+ * A paused habit is otherwise indistinguishable from an abandoned one on this screen: the
+ * mosaic goes to dashes and the streak stops climbing, and the only thing saying that was
+ * deliberate is a small icon in the app bar.
+ */
+@Composable
+private fun PausedCard(
+    since: LocalDate?,
+    reason: String?,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Default.PauseCircleOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column {
+                Text(
+                    text = reason ?: "Paused",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                since?.let {
+                    Text(
+                        text = "Paused since ${it.format(pausedSinceFormat)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** "4 Sep" - the year is noise for a break you are currently on. */
+private val pausedSinceFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
 private fun Section(

@@ -6,7 +6,6 @@ import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.Pause
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 
@@ -43,6 +42,9 @@ class HabitRepository(
     ) {
         /** True while a pause is running, which is what the UI offers "Resume" for. */
         val isPaused: Boolean get() = pauses.any { it.isOpenEnded }
+
+        /** Why it is paused, if the user said. Null when not paused, or when they didn't. */
+        val pauseReason: String? get() = pauses.firstOrNull { it.isOpenEnded }?.reason
     }
 
     /** Habits with the entries and pauses needed to draw and judge their mosaic. */
@@ -145,7 +147,8 @@ class HabitRepository(
     }
 
     /**
-     * Suspends [habitId] from [from] onward. Idempotent - pausing twice changes nothing.
+     * Suspends [habitId] from [from] onward, optionally saying why. Idempotent - pausing
+     * twice changes nothing but the [reason].
      *
      * Paused periods settle as not-scheduled, so they neither count as misses nor break a
      * chain: a fortnight away is not a fortnight of failure.
@@ -153,12 +156,13 @@ class HabitRepository(
     suspend fun pauseHabit(
         habitId: Long,
         from: LocalDate,
+        reason: String? = null,
     ) {
-        dao.startPause(habitId, from)
+        dao.startPause(habitId, from, reason)
         onDataChanged()
     }
 
-    /** Ends the running pause for [habitId] on [on]. No-op if it was not paused. */
+    /** Makes [habitId] live again from [on]. No-op if it was not paused. */
     suspend fun resumeHabit(
         habitId: Long,
         on: LocalDate,
@@ -168,19 +172,21 @@ class HabitRepository(
     }
 
     /**
-     * Pauses every active habit - the "I'm going on holiday" button.
+     * Applies a whole pause selection at once - what the pause picker submits.
      *
-     * Already-paused habits are left exactly as they are rather than being restarted, so
-     * a habit paused since last week keeps its real start date.
+     * Both directions in one call, and one transaction underneath: the picker's answer is
+     * "these are paused and those are not", and applying half of that would briefly be a
+     * state the user never asked for. Already-paused habits in [pause] keep their real
+     * start date and only take the new [reason].
      */
-    suspend fun pauseAll(from: LocalDate) {
-        dao.observeActiveHabits().first().forEach { dao.startPause(it.id, from) }
-        onDataChanged()
-    }
-
-    /** Ends every running pause. */
-    suspend fun resumeAll(on: LocalDate) {
-        dao.pausedHabitIds().forEach { dao.endPause(it, on) }
+    suspend fun setPaused(
+        pause: Collection<Long>,
+        resume: Collection<Long>,
+        on: LocalDate,
+        reason: String? = null,
+    ) {
+        if (pause.isEmpty() && resume.isEmpty()) return
+        dao.setPaused(pause, resume, on, reason)
         onDataChanged()
     }
 

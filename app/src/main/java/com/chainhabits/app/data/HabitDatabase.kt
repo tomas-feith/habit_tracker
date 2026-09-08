@@ -57,6 +57,19 @@ private val MIGRATION_2_3 =
         }
     }
 
+/**
+ * Adds the nullable `reason` column to `pauses`.
+ *
+ * Additive and nullable, like [MIGRATION_2_3]: every pause already recorded simply has no
+ * reason, which is exactly the state it was in before the column existed.
+ */
+private val MIGRATION_3_4 =
+    object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `pauses` ADD COLUMN `reason` TEXT")
+        }
+    }
+
 @Database(
     entities = [HabitEntity::class, EntryEntity::class, PauseEntity::class],
     version = HabitDatabase.VERSION,
@@ -67,7 +80,7 @@ abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
 
         const val NAME = "habits.db"
 
@@ -87,7 +100,7 @@ abstract class HabitDatabase : RoomDatabase() {
          * The exported schema JSONs under `app/schemas` are committed for exactly this
          * reason: they are what the migration test diffs against.
          */
-        val MIGRATIONS: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
+        val MIGRATIONS: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         @Volatile
         private var instance: HabitDatabase? = null

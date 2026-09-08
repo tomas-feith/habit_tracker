@@ -107,6 +107,14 @@ data class Pause(
     val start: LocalDate,
     /** Null while the pause is still running - "paused until I say otherwise". */
     val end: LocalDate? = null,
+    /**
+     * Why the habit is suspended, in the user's own words: "On vacation", "Injured leg".
+     *
+     * Carried on the pause rather than on the habit because it belongs to this stretch and
+     * not to the habit itself - next month's pause has its own reason, and last summer's
+     * should still read "On vacation" when you look back at the gap it left.
+     */
+    val reason: String? = null,
 ) {
     val isOpenEnded: Boolean get() = end == null
 

@@ -75,7 +75,13 @@ class BackupTest {
 
     private val pauses =
         listOf(
-            PauseEntity(1, 1, LocalDate.parse("2026-07-01"), LocalDate.parse("2026-07-14")),
+            PauseEntity(
+                1,
+                1,
+                LocalDate.parse("2026-07-01"),
+                LocalDate.parse("2026-07-14"),
+                "On vacation",
+            ),
             // An open pause: still running, end is null.
             PauseEntity(2, 2, LocalDate.parse("2026-08-10"), null),
         )
@@ -129,6 +135,13 @@ class BackupTest {
     @Test
     fun `preserves an open pause as still running`() {
         assertEquals(null, roundTrip().pauses.single { it.id == 2L }.end)
+    }
+
+    /** Why a habit was paused is the user's own writing, so it has to survive the file. */
+    @Test
+    fun `round trips the reason a pause was given`() {
+        assertEquals("On vacation", roundTrip().pauses.single { it.id == 1L }.reason)
+        assertEquals(null, roundTrip().pauses.single { it.id == 2L }.reason)
     }
 
     @Test

@@ -37,6 +37,14 @@ data class WidgetRow(
     /** True while a pause is running, so the row reads as suspended rather than undone. */
     val isPaused: Boolean,
     /**
+     * Why it is paused, when the user said.
+     *
+     * Carried onto the launcher because "paused" alone invites the question the answer to
+     * which is already stored - and a widget that says "paused - injured leg" is the one
+     * place the reason is read without opening anything.
+     */
+    val pauseReason: String? = null,
+    /**
      * True when one more miss would break the chain.
      *
      * The widget's whole advantage over a notification is that it is already on screen, so
@@ -76,7 +84,7 @@ data class WidgetRow(
         get() =
             when {
                 isPaused -> {
-                    "paused"
+                    pauseReason?.let { "paused - $it" } ?: "paused"
                 }
 
                 // At risk outranks the plain count, including for a weekly habit, where the
@@ -148,6 +156,7 @@ private fun Habit.toWidgetRow(
         isWeekly = isWeekly,
         polarity = polarity,
         isPaused = pauses.any { it.isOpenEnded },
+        pauseReason = pauses.firstOrNull { it.isOpenEnded }?.reason,
         atRisk = stats.atRisk,
     )
 }

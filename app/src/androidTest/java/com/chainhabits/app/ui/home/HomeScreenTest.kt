@@ -4,14 +4,18 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isOff
 import androidx.compose.ui.test.isOn
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -259,23 +263,70 @@ class HomeScreenTest {
             .assertExists()
     }
 
+    /**
+     * The picker pauses what was chosen and nothing else.
+     *
+     * The point of it: going away rarely suspends everything - the gym stops, the reading
+     * does not - and the switch this replaced could only say "all" or "none".
+     */
     @Test
-    fun theHolidaySwitchPausesAndResumesEverything() {
-        add("Read")
+    fun thePickerPausesOnlyTheHabitsChosen() {
+        val read = add("Read")
         add("Workout")
         show()
         awaitText("Read")
 
-        compose.onNodeWithContentDescription("Pause all habits").performClick()
-        // The switch flips only once the state comes back round, so wait for the control
-        // to become the resume one rather than for the rows in the database.
-        awaitDescription("Resume all habits")
-        assertEquals(2, runBlocking { db.habitDao().pausedHabitIds().size })
+        compose.onNodeWithContentDescription("Pause habits").performClick()
+        awaitText("Pause habits")
+        pickerRow("Read").performClick()
+        compose.onNodeWithText("Done").performClick()
 
-        compose.onNodeWithContentDescription("Resume all habits").performClick()
-        awaitDescription("Pause all habits")
+        awaitText("paused")
+        assertEquals(listOf(read), runBlocking { db.habitDao().pausedHabitIds() })
+    }
+
+    @Test
+    fun thePickerRecordsWhyAndTheRowSaysIt() {
+        add("Read")
+        show()
+        awaitText("Read")
+
+        compose.onNodeWithContentDescription("Pause habits").performClick()
+        awaitText("Pause habits")
+        compose.onNodeWithText("All").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("On vacation")
+        compose.onNodeWithText("Done").performClick()
+
+        // The reason is the whole point of the field: "paused" alone only raises the
+        // question it already has the answer to.
+        awaitText("paused - On vacation")
+    }
+
+    @Test
+    fun unpickingAHabitInThePickerResumesIt() {
+        val id = add("Read")
+        runBlocking { repository.pauseHabit(id, today, "On vacation") }
+        show()
+        awaitText("paused - On vacation")
+
+        compose.onNodeWithContentDescription("Pause habits").performClick()
+        awaitText("Pause habits")
+        // It opens showing what is already true, so resuming is unticking.
+        pickerRow("Read").performClick()
+        compose.onNodeWithText("Done").performClick()
+
+        // The tile coming back is the habit being judged again, which is the real change.
+        awaitTile(on = false)
         assertNull(runBlocking { db.habitDao().pausedHabitIds().firstOrNull() })
     }
+
+    /**
+     * The picker's line for one habit.
+     *
+     * Matched on being toggleable, because the card behind the dialog carries the same
+     * name and only the picker's line is a checkbox.
+     */
+    private fun pickerRow(name: String) = compose.onNode(hasText(name) and isToggleable())
 
     // --- The record caption -------------------------------------------------------
     //
@@ -398,11 +449,6 @@ class HomeScreenTest {
         // doing, so there is nothing to celebrate.
         compose.onNodeWithText("best ever").assertDoesNotExist()
     }
-
-    private fun awaitDescription(description: String) =
-        compose.waitUntil(TIMEOUT) {
-            compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
-        }
 
     private companion object {
         const val TIMEOUT = 5_000L

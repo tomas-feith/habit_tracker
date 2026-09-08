@@ -141,6 +141,49 @@ class MigrationTest {
     }
 
     /**
+     * Adding `reason` must leave every recorded pause intact, with no reason.
+     *
+     * The pause rows are what keep last summer's holiday rendering as dashes rather than as
+     * a fortnight of misses, so damaging them on the way past would retroactively break a
+     * chain that never broke.
+     */
+    @Test
+    @Throws(IOException::class)
+    fun migrate3To4AddsANullReason() {
+        helper.createDatabase(TEST_DB, 3).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO habits
+                    (id, name, note, polarity, strictness, cadenceType, cadenceDays,
+                     cadenceTarget, reminder_minute_of_day, createdOn, archivedOn, sortOrder)
+                VALUES (1, 'Read', NULL, 'POSITIVE', 'STANDARD', 'DAILY', 0, 1, NULL,
+                        20000, NULL, 0)
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "INSERT INTO pauses (id, habitId, `start`, `end`) VALUES (1, 1, 20010, 20020)",
+            )
+        }
+
+        val db =
+            helper.runMigrationsAndValidate(
+                TEST_DB,
+                4,
+                true,
+                *HabitDatabase.MIGRATIONS.toTypedArray(),
+            )
+
+        db.use {
+            it.query("SELECT `start`, `end`, reason FROM pauses WHERE id = 1").use { cursor ->
+                assertTrue("pause row lost in migration", cursor.moveToFirst())
+                assertEquals(20010, cursor.getInt(0))
+                assertEquals(20020, cursor.getInt(1))
+                assertTrue("an existing pause must migrate to no reason", cursor.isNull(2))
+            }
+        }
+    }
+
+    /**
      * Every migration in [HabitDatabase.MIGRATIONS] must be contiguous and land exactly
      * on the declared version. A gap here would fail at runtime on a real upgrade.
      */

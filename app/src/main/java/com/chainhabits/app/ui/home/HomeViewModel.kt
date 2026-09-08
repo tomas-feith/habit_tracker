@@ -34,6 +34,8 @@ data class HabitRowState(
     val currentCount: Int,
     /** True while a pause is running: the habit is suspended, not merely undone. */
     val isPaused: Boolean = false,
+    /** Why it is paused, in the user's words. Null when not paused, or when unsaid. */
+    val pauseReason: String? = null,
 ) {
     val weeklyTarget: Int? get() = (habit.cadence as? Cadence.TimesPerWeek)?.target
 
@@ -84,8 +86,19 @@ data class HomeUiState(
      */
     val atRisk: List<HabitRowState> get() = rows.filter { it.stats.atRisk && !it.isPaused }
 
-    /** True when every habit is suspended - the "on holiday" state. */
-    val allPaused: Boolean get() = rows.isNotEmpty() && rows.all { it.isPaused }
+    /** The habits currently suspended, which is what the pause picker opens showing. */
+    val pausedIds: Set<Long>
+        get() = rows.filter { it.isPaused }.mapTo(mutableSetOf()) { it.habit.id }
+
+    /**
+     * The reason to open the picker prefilled with.
+     *
+     * One field for the whole selection, so the first one that has something to say wins.
+     * Prefilling matters more than picking perfectly between two different reasons: an
+     * empty field submitted unchanged would silently wipe the message off every habit
+     * already paused.
+     */
+    val pauseReason: String? get() = rows.firstNotNullOfOrNull { it.pauseReason }
 }
 
 class HomeViewModel(
@@ -139,6 +152,7 @@ class HomeViewModel(
                     stats = timeline.stats,
                     currentCount = timeline.currentCount,
                     isPaused = pauses.any { it.isOpenEnded },
+                    pauseReason = pauses.firstOrNull { it.isOpenEnded }?.reason,
                 )
             }
         return HomeUiState(rows = rows.inOrder(order), today = day, loaded = true)
@@ -177,15 +191,25 @@ class HomeViewModel(
         }
     }
 
-    /** The holiday switch: suspends or resumes every habit at once. */
-    fun setAllPaused(paused: Boolean) =
-        viewModelScope.launch {
-            if (paused) {
-                repository.pauseAll(today.value)
-            } else {
-                repository.resumeAll(today.value)
-            }
-        }
+    /**
+     * What the pause picker submits: the habits that should be paused, and why.
+     *
+     * Stated as a whole selection rather than as a toggle, because that is the question the
+     * dialog actually asks. Anything not named in [paused] and currently suspended is
+     * resumed, so closing the picker leaves the app in exactly the state it displayed.
+     */
+    fun applyPauses(
+        paused: Set<Long>,
+        reason: String?,
+    ) = viewModelScope.launch {
+        val rows = uiState.value.rows
+        repository.setPaused(
+            pause = rows.filter { it.habit.id in paused }.map { it.habit.id },
+            resume = rows.filter { it.isPaused && it.habit.id !in paused }.map { it.habit.id },
+            on = today.value,
+            reason = reason?.trim()?.ifEmpty { null },
+        )
+    }
 
     /** Moves the dragged habit to the position currently held by [toKey]. */
     fun moveHabit(

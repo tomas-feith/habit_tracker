@@ -142,22 +142,36 @@ interface HabitDao {
      * Starts a pause for [habitId] on [from], unless one is already running.
      *
      * Transactional and idempotent: two taps, or a "pause everything" that includes an
-     * already-paused habit, must not leave two overlapping open pauses behind.
+     * already-paused habit, must not leave two overlapping open pauses behind. An
+     * already-running pause keeps its start date and takes the new [reason], so editing the
+     * message on a habit paused since last week says something new about the same stretch
+     * rather than restarting it.
      */
     @Transaction
     suspend fun startPause(
         habitId: Long,
         from: LocalDate,
+        reason: String? = null,
     ) {
-        if (openPauseFor(habitId) != null) return
-        insertPause(PauseEntity(habitId = habitId, start = from, end = null))
+        val open = openPauseFor(habitId)
+        if (open != null) {
+            if (open.reason != reason) updatePause(open.copy(reason = reason))
+            return
+        }
+        insertPause(PauseEntity(habitId = habitId, start = from, end = null, reason = reason))
     }
 
     /**
-     * Ends the running pause for [habitId] on [on].
+     * Ends the running pause for [habitId], so the habit is live again from [on] onward.
      *
-     * A pause that ends before it began would be nonsense, so a same-day resume collapses to
-     * a single paused day rather than an inverted range.
+     * [end] is inclusive, so the pause closes on the day *before* the resume: resuming is
+     * the user saying "count me from today", and a pause that still covered today would
+     * leave the habit reading as paused for the rest of the day it was un-paused on.
+     *
+     * A pause that ends up covering no day at all - paused and resumed the same day, the
+     * mis-tap this mostly exists for - is deleted rather than stored as an inverted range.
+     * That is the one case where dropping the row loses nothing: an empty pause is not
+     * history, and keeping it would dash out a day the user never actually paused.
      */
     @Transaction
     suspend fun endPause(
@@ -165,7 +179,26 @@ interface HabitDao {
         on: LocalDate,
     ) {
         val open = openPauseFor(habitId) ?: return
-        updatePause(open.copy(end = maxOf(on, open.start)))
+        val last = on.minusDays(1)
+        if (last < open.start) deletePause(open) else updatePause(open.copy(end = last))
+    }
+
+    /**
+     * Applies one pass of the pause picker: [pause] suspended, [resume] made live again.
+     *
+     * One transaction so the list cannot be observed half-applied, which on a screen that
+     * redraws every row from the same query would show as a visible flicker of habits
+     * changing state one at a time.
+     */
+    @Transaction
+    suspend fun setPaused(
+        pause: Collection<Long>,
+        resume: Collection<Long>,
+        on: LocalDate,
+        reason: String? = null,
+    ) {
+        pause.forEach { startPause(it, on, reason) }
+        resume.forEach { endPause(it, on) }
     }
 
     /**

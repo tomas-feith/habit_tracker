@@ -198,21 +198,82 @@ class HabitDaoTest {
             )
         }
 
+    /**
+     * The mis-tap: paused and un-paused within the same minute.
+     *
+     * Storing that as a pause ending today would leave the day dashed out and dropped from
+     * the streak until midnight - the habit still reading as paused for hours after the
+     * user un-paused it, which is what this looked like on a real phone. A pause covering
+     * no day is not history, so the row goes.
+     */
     @Test
-    fun resumingOnTheSameDayCollapsesRatherThanInverting() =
+    fun pausingAndResumingTheSameDayLeavesNothingBehind() =
         runBlocking {
             val id = repository.addHabit(habit())
             repository.pauseHabit(id, day)
+
+            repository.resumeHabit(id, day)
+
+            assertEquals(0, dao.observePausesFor(id).first().size)
+        }
+
+    /** A resume dated before the pause began covers nothing either, so it also collapses. */
+    @Test
+    fun resumingBeforeThePauseBeganLeavesNothingBehind() =
+        runBlocking {
+            val id = repository.addHabit(habit())
+            repository.pauseHabit(id, day)
+
             repository.resumeHabit(id, day.minusDays(3))
 
+            assertEquals(0, dao.observePausesFor(id).first().size)
+        }
+
+    /**
+     * Resuming makes the habit live *from* the resume day, so the pause closes the day
+     * before. The day you come back is a day you are being judged on again.
+     */
+    @Test
+    fun resumingClosesThePauseOnTheDayBefore() =
+        runBlocking {
+            val id = repository.addHabit(habit())
+            repository.pauseHabit(id, day.minusDays(5))
+
+            repository.resumeHabit(id, day)
+
+            val pause = dao.observePausesFor(id).first().single()
+            assertEquals(day.minusDays(5), pause.start)
+            assertEquals(day.minusDays(1), pause.end)
+        }
+
+    @Test
+    fun aPauseKeepsTheReasonItWasGiven() =
+        runBlocking {
+            val id = repository.addHabit(habit())
+            repository.pauseHabit(id, day, "On vacation")
+
             assertEquals(
-                day,
+                "On vacation",
                 dao
                     .observePausesFor(id)
                     .first()
                     .single()
-                    .end,
+                    .reason,
             )
+        }
+
+    /** Editing the message says something new about the same break, not a new break. */
+    @Test
+    fun pausingAgainRewritesTheReasonWithoutRestartingThePause() =
+        runBlocking {
+            val id = repository.addHabit(habit())
+            repository.pauseHabit(id, day.minusDays(5), "On vacation")
+
+            repository.pauseHabit(id, day, "Injured leg")
+
+            val pause = dao.observePausesFor(id).first().single()
+            assertEquals(day.minusDays(5), pause.start)
+            assertEquals("Injured leg", pause.reason)
         }
 
     @Test
@@ -224,13 +285,13 @@ class HabitDaoTest {
         }
 
     @Test
-    fun pauseAllSkipsHabitsAlreadyPaused() =
+    fun applyingASelectionSkipsHabitsAlreadyPaused() =
         runBlocking {
             val a = repository.addHabit(habit("A"))
-            repository.addHabit(habit("B"))
+            val b = repository.addHabit(habit("B"))
             repository.pauseHabit(a, day.minusDays(5))
 
-            repository.pauseAll(day)
+            repository.setPaused(pause = listOf(a, b), resume = emptyList(), on = day)
 
             // A keeps its real start date rather than being restarted today.
             assertEquals(
@@ -242,6 +303,32 @@ class HabitDaoTest {
                     .start,
             )
             assertEquals(2, dao.pausedHabitIds().size)
+        }
+
+    /** The picker's answer is a whole selection, so one call moves habits both ways. */
+    @Test
+    fun applyingASelectionPausesAndResumesInOneGo() =
+        runBlocking {
+            val a = repository.addHabit(habit("A"))
+            val b = repository.addHabit(habit("B"))
+            repository.pauseHabit(a, day.minusDays(5))
+
+            repository.setPaused(
+                pause = listOf(b),
+                resume = listOf(a),
+                on = day,
+                reason = "Injured leg",
+            )
+
+            assertEquals(listOf(b), dao.pausedHabitIds())
+            assertEquals(
+                "Injured leg",
+                dao
+                    .observePausesFor(b)
+                    .first()
+                    .single()
+                    .reason,
+            )
         }
 
     // --- deletion ---

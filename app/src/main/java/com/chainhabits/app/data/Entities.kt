@@ -66,7 +66,8 @@ data class EntryEntity(
  * A suspended stretch for one habit. [end] is null while the pause is still running.
  *
  * Rows are kept after a pause finishes: they are what makes last summer's holiday still
- * render as dashes instead of quietly becoming a run of misses.
+ * render as dashes instead of quietly becoming a run of misses. The exception is a pause
+ * that covered no day at all - see [HabitDao.endPause].
  */
 @Entity(
     tableName = "pauses",
@@ -85,12 +86,15 @@ data class PauseEntity(
     val habitId: Long,
     val start: LocalDate,
     val end: LocalDate?,
+    /** Free text: why the habit is suspended ("On vacation"). Null when unset. */
+    val reason: String? = null,
 )
 
-fun PauseEntity.toDomain(): Pause = Pause(id = id, habitId = habitId, start = start, end = end)
+fun PauseEntity.toDomain(): Pause =
+    Pause(id = id, habitId = habitId, start = start, end = end, reason = reason)
 
 fun Pause.toEntity(): PauseEntity =
-    PauseEntity(id = id, habitId = habitId, start = start, end = end)
+    PauseEntity(id = id, habitId = habitId, start = start, end = end, reason = reason)
 
 fun HabitEntity.toDomain(): Habit =
     Habit(

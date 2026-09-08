@@ -82,6 +82,7 @@ private data class PausePayload(
     val habitId: Long,
     val start: String,
     val end: String? = null,
+    val reason: String? = null,
 )
 
 /** The outcome of reading a backup file. */
@@ -113,7 +114,13 @@ fun buildBackup(
             entries = entries.map { EntryPayload(it.habitId, it.date.toString(), it.count) },
             pauses =
                 pauses.map {
-                    PausePayload(it.id, it.habitId, it.start.toString(), it.end?.toString())
+                    PausePayload(
+                        it.id,
+                        it.habitId,
+                        it.start.toString(),
+                        it.end?.toString(),
+                        it.reason,
+                    )
                 },
         ),
     )
@@ -176,6 +183,7 @@ fun parseBackup(text: String): RestoreResult {
                         it.habitId,
                         LocalDate.parse(it.start),
                         it.end?.let(LocalDate::parse),
+                        it.reason,
                     )
                 }
         }.getOrNull()

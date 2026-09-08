@@ -18,31 +18,38 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PauseCircleOutline
-import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -50,6 +57,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,11 +119,27 @@ fun HomeScreen(
     // event in the app precisely when the user happened to be looking elsewhere.
     val celebrating = rememberRecordCelebrations(state.rows, loaded = state.loaded)
 
+    // Saveable so a rotation mid-selection does not throw the choice away.
+    var pickingPauses by rememberSaveable { mutableStateOf(false) }
+
     // Without this the app keeps yesterday's date after being left open overnight, and
     // taps would be logged against the wrong day.
     LifecycleResumeEffect(Unit) {
         viewModel.refreshDate()
         onPauseOrDispose { }
+    }
+
+    if (pickingPauses) {
+        PausePicker(
+            rows = state.rows,
+            initialSelection = state.pausedIds,
+            initialReason = state.pauseReason.orEmpty(),
+            onDismiss = { pickingPauses = false },
+            onApply = { paused, reason ->
+                pickingPauses = false
+                viewModel.applyPauses(paused, reason)
+            },
+        )
     }
 
     Scaffold(
@@ -129,21 +154,14 @@ fun HomeScreen(
                         Icon(Icons.Default.Settings, contentDescription = "Backup")
                     }
                     if (state.rows.isNotEmpty()) {
-                        // The holiday switch. Pausing everything one habit at a time is
-                        // exactly the friction that makes people skip it and eat the misses.
-                        IconButton(onClick = { viewModel.setAllPaused(!state.allPaused) }) {
+                        // Opens the picker rather than pausing everything outright. Going
+                        // away rarely suspends *all* of it - the gym stops, the reading
+                        // doesn't - and an all-or-nothing switch made the honest answer
+                        // (pause four of six, and say why) the slowest one available.
+                        IconButton(onClick = { pickingPauses = true }) {
                             Icon(
-                                if (state.allPaused) {
-                                    Icons.Default.PlayCircleOutline
-                                } else {
-                                    Icons.Default.PauseCircleOutline
-                                },
-                                contentDescription =
-                                    if (state.allPaused) {
-                                        "Resume all habits"
-                                    } else {
-                                        "Pause all habits"
-                                    },
+                                Icons.Default.PauseCircleOutline,
+                                contentDescription = "Pause habits",
                             )
                         }
                     }
@@ -200,6 +218,139 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/** A `Set` is not something a `Bundle` holds, so the selection survives rotation as a list. */
+private val selectionSaver =
+    listSaver<Set<Long>, Long>(save = { it.toList() }, restore = { it.toSet() })
+
+/**
+ * The pause picker: which habits are suspended, and why.
+ *
+ * States the whole selection rather than toggling, because "which habits" is the question
+ * a break actually has an answer to. A trip pauses the gym and the cooking but not the
+ * reading, and the previous all-or-nothing switch made that answer the slowest one
+ * available - so it went unused and the misses got eaten instead.
+ *
+ * The message is one field for the whole selection, not one per habit: it is written once
+ * per break ("On vacation", "Injured leg"), and asking for it six times would be asking
+ * six times for the same sentence.
+ */
+@Composable
+private fun PausePicker(
+    rows: List<HabitRowState>,
+    initialSelection: Set<Long>,
+    initialReason: String,
+    onDismiss: () -> Unit,
+    onApply: (Set<Long>, String?) -> Unit,
+) {
+    // Seeded from what is already true, so opening and confirming the dialog unchanged is
+    // a no-op rather than a mass resume.
+    var selected by rememberSaveable(stateSaver = selectionSaver) {
+        mutableStateOf(initialSelection)
+    }
+    var reason by rememberSaveable { mutableStateOf(initialReason) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pause habits") },
+        text = {
+            Column {
+                Text(
+                    text =
+                        "Paused days carry no judgement: they are not misses and they do " +
+                            "not break a chain.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Habits",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val all = selected.size == rows.size
+                    TextButton(
+                        onClick = {
+                            selected =
+                                if (all) {
+                                    emptySet()
+                                } else {
+                                    rows.mapTo(mutableSetOf()) { it.habit.id }
+                                }
+                        },
+                    ) { Text(if (all) "None" else "All") }
+                }
+
+                // Bounded and scrolled rather than left to grow: past a dozen habits the
+                // list would push the message field and the buttons off a short screen.
+                Column(
+                    modifier =
+                        Modifier
+                            .heightIn(max = 240.dp)
+                            .verticalScroll(rememberScrollState()),
+                ) {
+                    rows.forEach { row ->
+                        val checked = row.habit.id in selected
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    // One target for the whole line, labelled by the name
+                                    // it already shows - a bare checkbox reaches a screen
+                                    // reader as an unnamed control.
+                                    .toggleable(
+                                        value = checked,
+                                        role = Role.Checkbox,
+                                        onValueChange = { on ->
+                                            selected =
+                                                if (on) {
+                                                    selected + row.habit.id
+                                                } else {
+                                                    selected - row.habit.id
+                                                }
+                                        },
+                                    ).padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = row.habit.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { reason = it },
+                    label = { Text("Why? (optional)") },
+                    placeholder = { Text("On vacation") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onApply(selected, reason.trim().ifEmpty { null }) }) {
+                Text("Done")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 /**
@@ -357,6 +508,9 @@ private fun HeroCount(
                     style = MaterialTheme.typography.labelSmall,
                     color = if (caption.isGood) colors.done else colors.missedOnce,
                     fontWeight = FontWeight.Medium,
+                    // A pause reason is free text, so this one can be arbitrarily long.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -579,20 +733,34 @@ private data class Caption(
 /** What to say under the hero number, when there is something worth saying. */
 private fun caption(row: HabitRowState): Caption? =
     when {
-        // Says why the row is quiet, so a paused habit does not read as a stalled one.
-        row.isPaused -> Caption("paused", isGood = false)
+        // Says why the row is quiet, so a paused habit does not read as a stalled one -
+        // and in the user's own words when they left any, since "paused - injured leg"
+        // answers the question "paused" only raises.
+        row.isPaused -> {
+            Caption(row.pauseReason?.let { "paused - $it" } ?: "paused", isGood = false)
+        }
 
-        row.stats.atRisk -> Caption("don't miss twice", isGood = false)
+        row.stats.atRisk -> {
+            Caption("don't miss twice", isGood = false)
+        }
 
         // Outranks "clean" below, which is true of any unbroken run and so says less.
-        row.isRecord -> Caption("best ever", isGood = true)
+        row.isRecord -> {
+            Caption("best ever", isGood = true)
+        }
 
-        row.headlineCount == 0 -> Caption("starting over", isGood = false)
+        row.headlineCount == 0 -> {
+            Caption("starting over", isGood = false)
+        }
 
         row.habit.strictness == Strictness.STRICT &&
-            row.habit.polarity == Polarity.NEGATIVE -> Caption("clean", isGood = true)
+            row.habit.polarity == Polarity.NEGATIVE -> {
+            Caption("clean", isGood = true)
+        }
 
-        else -> null
+        else -> {
+            null
+        }
     }
 
 private fun quotaLabel(

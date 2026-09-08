@@ -57,6 +57,10 @@ data class DetailUiState(
     val months: List<MonthBar> = emptyList(),
     /** True while a pause is running. */
     val isPaused: Boolean = false,
+    /** The day the running pause began, for "paused since 4 Sep". */
+    val pausedSince: LocalDate? = null,
+    /** Why it is paused, in the user's words. Null when not paused, or when unsaid. */
+    val pauseReason: String? = null,
     /** The day whose correction sheet is open, if any. */
     val selectedDay: DaySelection? = null,
     /**
@@ -111,6 +115,8 @@ class DetailViewModel(
                 periodCells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
                 months = monthlyRates(timeline, day),
                 isPaused = pauses.any { it.isOpenEnded },
+                pausedSince = pauses.firstOrNull { it.isOpenEnded }?.start,
+                pauseReason = pauses.firstOrNull { it.isOpenEnded }?.reason,
                 selectedDay = open.selected?.let { select(habit, timeline, it, day) },
                 backfillDays = backfillDays(habit, timeline, day),
                 backfillOpen = open.listOpen,
