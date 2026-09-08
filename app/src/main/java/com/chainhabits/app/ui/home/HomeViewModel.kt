@@ -91,14 +91,20 @@ data class HomeUiState(
         get() = rows.filter { it.isPaused }.mapTo(mutableSetOf()) { it.habit.id }
 
     /**
-     * The reason to open the picker prefilled with.
+     * The reason to open the picker prefilled with, when the paused habits agree on one.
      *
-     * One field for the whole selection, so the first one that has something to say wins.
-     * Prefilling matters more than picking perfectly between two different reasons: an
-     * empty field submitted unchanged would silently wipe the message off every habit
-     * already paused.
+     * Deliberately null when two paused habits give different reasons: there is one field
+     * for the whole selection, and showing one of the two answers would present a guess as
+     * the current state. Nothing is overwritten either way - the field only rewrites what
+     * the user actually types into it.
      */
-    val pauseReason: String? get() = rows.firstNotNullOfOrNull { it.pauseReason }
+    val pauseReason: String?
+        get() =
+            rows
+                .filter { it.isPaused }
+                .map { it.pauseReason }
+                .distinct()
+                .singleOrNull()
 }
 
 class HomeViewModel(
@@ -192,22 +198,30 @@ class HomeViewModel(
     }
 
     /**
-     * What the pause picker submits: the habits that should be paused, and why.
+     * What the pause picker submits: the ticked habits, the ones it unticked, and why.
      *
-     * Stated as a whole selection rather than as a toggle, because that is the question the
-     * dialog actually asks. Anything not named in [paused] and currently suspended is
-     * resumed, so closing the picker leaves the app in exactly the state it displayed.
+     * [resumed] is what the *user* unticked rather than everything paused that is no longer
+     * selected. The dialog holds a snapshot from the moment it opened, and the database can
+     * move under it - the widget logs, a reminder fires, midnight rolls over - so treating
+     * the snapshot as the whole truth would resume a habit somebody else had just paused.
+     * Habits the user never touched are left exactly as they are.
+     *
+     * [reasonEdited] is likewise the difference between "the user wrote this" and "the
+     * field happened to be prefilled with it": only the former rewrites the message on a
+     * habit that was already paused.
      */
     fun applyPauses(
         paused: Set<Long>,
+        resumed: Set<Long>,
         reason: String?,
+        reasonEdited: Boolean,
     ) = viewModelScope.launch {
-        val rows = uiState.value.rows
         repository.setPaused(
-            pause = rows.filter { it.habit.id in paused }.map { it.habit.id },
-            resume = rows.filter { it.isPaused && it.habit.id !in paused }.map { it.habit.id },
+            pause = paused,
+            resume = resumed,
             on = today.value,
             reason = reason?.trim()?.ifEmpty { null },
+            rewriteReason = reasonEdited,
         )
     }
 

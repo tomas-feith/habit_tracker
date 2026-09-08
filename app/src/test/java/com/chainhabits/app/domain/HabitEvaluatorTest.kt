@@ -454,6 +454,55 @@ class HabitEvaluatorTest {
         )
     }
 
+    /**
+     * Regression: one paused day used to discard the whole week for a weekly habit, which
+     * cost a negative habit a week it had genuinely kept clean.
+     */
+    @Test
+    fun `a week with one paused day is still judged on what was kept`() {
+        val h = habit(polarity = Polarity.NEGATIVE, cadence = Cadence.TimesPerWeek(2))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+
+        val cells = timelineOf(h, emptyList(), pause(weekStart, weekStart)).cells
+
+        assertEquals(
+            "six days inside the allowance is a clean week, holiday or not",
+            CellState.DONE,
+            cells.first { it.date == weekStart }.state,
+        )
+    }
+
+    @Test
+    fun `slips in a partly paused week are still misses`() {
+        val h = habit(polarity = Polarity.NEGATIVE, cadence = Cadence.TimesPerWeek(1))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        // Two slips against an allowance of one, logged on days the user was here.
+        val slips = entries(weekStart.plusDays(3), weekStart.plusDays(4))
+
+        val cells = timelineOf(h, slips, pause(weekStart, weekStart)).cells
+
+        assertEquals(
+            "a pause elsewhere in the week does not unlog a slip",
+            CellState.MISSED_ONCE,
+            cells.first { it.date == weekStart }.state,
+        )
+    }
+
+    @Test
+    fun `a positive habit short of its quota in a partly paused week is not judged`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val done = entries(weekStart.plusDays(5))
+
+        val cells = timelineOf(h, done, pause(weekStart, weekStart.plusDays(3))).cells
+
+        assertEquals(
+            "the days it needed were taken away from it, so it cannot have missed",
+            CellState.NOT_SCHEDULED,
+            cells.first { it.date == weekStart }.state,
+        )
+    }
+
     @Test
     fun `pausing does not confiscate a day you already earned`() {
         // Regression: pausing today used to discard today's completion and reset the

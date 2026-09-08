@@ -321,6 +321,41 @@ class HomeScreenTest {
     }
 
     /**
+     * A habit paused while the dialog sits open must not be resumed by closing it.
+     *
+     * The dialog holds a snapshot from the moment it opened - the widget, a reminder or
+     * midnight can all move the database under it - so it applies what the user actually
+     * ticked and unticked rather than treating that snapshot as the whole truth.
+     */
+    @Test
+    fun thePickerLeavesHabitsTheUserNeverTouchedAlone() {
+        val read = add("Read")
+        val workout = add("Workout")
+        show()
+        awaitText("Read")
+
+        compose.onNodeWithContentDescription("Pause habits").performClick()
+        awaitText("Pause habits")
+        pickerRow("Read").performClick()
+
+        // Something else pauses Workout while the dialog is open.
+        runBlocking { repository.pauseHabit(workout, today, "Injured leg") }
+
+        compose.onNodeWithText("Done").performClick()
+        compose.waitUntil(TIMEOUT) {
+            runBlocking { db.habitDao().pausedHabitIds() }.size == 2
+        }
+
+        assertEquals(
+            setOf(read, workout),
+            runBlocking { db.habitDao().pausedHabitIds() }.toSet(),
+        )
+        // Untouched means untouched: its own message is still on it.
+        assertEquals("Injured leg", runBlocking { db.habitDao().openPauseFor(workout) }?.reason)
+        compose.onNodeWithText("Pause habits").assertDoesNotExist()
+    }
+
+    /**
      * The picker's line for one habit.
      *
      * Matched on being toggleable, because the card behind the dialog carries the same

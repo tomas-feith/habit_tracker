@@ -177,16 +177,17 @@ class HabitRepository(
      * Both directions in one call, and one transaction underneath: the picker's answer is
      * "these are paused and those are not", and applying half of that would briefly be a
      * state the user never asked for. Already-paused habits in [pause] keep their real
-     * start date and only take the new [reason].
+     * start date, and their own reason unless [rewriteReason].
      */
     suspend fun setPaused(
         pause: Collection<Long>,
         resume: Collection<Long>,
         on: LocalDate,
         reason: String? = null,
+        rewriteReason: Boolean = true,
     ) {
         if (pause.isEmpty() && resume.isEmpty()) return
-        dao.setPaused(pause, resume, on, reason)
+        dao.setPaused(pause, resume, on, reason, rewriteReason)
         onDataChanged()
     }
 

@@ -135,9 +135,14 @@ fun HomeScreen(
             initialSelection = state.pausedIds,
             initialReason = state.pauseReason.orEmpty(),
             onDismiss = { pickingPauses = false },
-            onApply = { paused, reason ->
+            onApply = { change ->
                 pickingPauses = false
-                viewModel.applyPauses(paused, reason)
+                viewModel.applyPauses(
+                    paused = change.paused,
+                    resumed = change.resumed,
+                    reason = change.reason,
+                    reasonEdited = change.reasonEdited,
+                )
             },
         )
     }
@@ -220,6 +225,76 @@ fun HomeScreen(
     }
 }
 
+/**
+ * The picker's habit list: one tickable line each, with whatever it is already paused for.
+ *
+ * Bounded and scrolled rather than left to grow - past a dozen habits the list would push
+ * the message field and the buttons off a short screen.
+ */
+@Composable
+private fun PauseHabitList(
+    rows: List<HabitRowState>,
+    selected: Set<Long>,
+    onToggle: (Long, Boolean) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .heightIn(max = 240.dp)
+                .verticalScroll(rememberScrollState()),
+    ) {
+        rows.forEach { row ->
+            val checked = row.habit.id in selected
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        // One target for the whole line, labelled by the name it already
+                        // shows - a bare checkbox reaches a screen reader as an unnamed
+                        // control.
+                        .toggleable(
+                            value = checked,
+                            role = Role.Checkbox,
+                            onValueChange = { on -> onToggle(row.habit.id, on) },
+                        ).padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = checked, onCheckedChange = null)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = row.habit.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // Its own reason, because one shared field cannot show two answers -
+                    // and without this a habit paused for something else looks like it is
+                    // paused for whatever is in the box.
+                    row.pauseReason?.let { existing ->
+                        Text(
+                            text = existing,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** What the picker submits. See [HomeViewModel.applyPauses] for why it is a change set. */
+private data class PauseChange(
+    val paused: Set<Long>,
+    val resumed: Set<Long>,
+    val reason: String?,
+    val reasonEdited: Boolean,
+)
+
 /** A `Set` is not something a `Bundle` holds, so the selection survives rotation as a list. */
 private val selectionSaver =
     listSaver<Set<Long>, Long>(save = { it.toList() }, restore = { it.toSet() })
@@ -242,14 +317,26 @@ private fun PausePicker(
     initialSelection: Set<Long>,
     initialReason: String,
     onDismiss: () -> Unit,
-    onApply: (Set<Long>, String?) -> Unit,
+    onApply: (PauseChange) -> Unit,
 ) {
     // Seeded from what is already true, so opening and confirming the dialog unchanged is
     // a no-op rather than a mass resume.
     var selected by rememberSaveable(stateSaver = selectionSaver) {
         mutableStateOf(initialSelection)
     }
+
+    // What was paused when the dialog opened, held rather than read back off the parameter.
+    // [initialSelection] is live: a habit paused elsewhere while this sits open would show
+    // up as one the user had unticked, and closing the dialog would resume it - which is
+    // the very thing keeping a snapshot is meant to prevent.
+    val opening by rememberSaveable(stateSaver = selectionSaver) {
+        mutableStateOf(initialSelection)
+    }
     var reason by rememberSaveable { mutableStateOf(initialReason) }
+
+    // Whether the message came from the user or from the prefill. Only the user's own
+    // writing is allowed to overwrite what a habit was already paused with.
+    var reasonEdited by rememberSaveable { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -284,49 +371,13 @@ private fun PausePicker(
                     ) { Text(if (all) "None" else "All") }
                 }
 
-                // Bounded and scrolled rather than left to grow: past a dozen habits the
-                // list would push the message field and the buttons off a short screen.
-                Column(
-                    modifier =
-                        Modifier
-                            .heightIn(max = 240.dp)
-                            .verticalScroll(rememberScrollState()),
-                ) {
-                    rows.forEach { row ->
-                        val checked = row.habit.id in selected
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    // One target for the whole line, labelled by the name
-                                    // it already shows - a bare checkbox reaches a screen
-                                    // reader as an unnamed control.
-                                    .toggleable(
-                                        value = checked,
-                                        role = Role.Checkbox,
-                                        onValueChange = { on ->
-                                            selected =
-                                                if (on) {
-                                                    selected + row.habit.id
-                                                } else {
-                                                    selected - row.habit.id
-                                                }
-                                        },
-                                    ).padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(checked = checked, onCheckedChange = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = row.habit.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
+                PauseHabitList(
+                    rows = rows,
+                    selected = selected,
+                    onToggle = { id, on ->
+                        selected = if (on) selected + id else selected - id
+                    },
+                )
 
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
@@ -334,7 +385,10 @@ private fun PausePicker(
 
                 OutlinedTextField(
                     value = reason,
-                    onValueChange = { reason = it },
+                    onValueChange = {
+                        reason = it
+                        reasonEdited = true
+                    },
                     label = { Text("Why? (optional)") },
                     placeholder = { Text("On vacation") },
                     singleLine = true,
@@ -343,9 +397,20 @@ private fun PausePicker(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(selected, reason.trim().ifEmpty { null }) }) {
-                Text("Done")
-            }
+            TextButton(
+                onClick = {
+                    onApply(
+                        PauseChange(
+                            paused = selected,
+                            // What the user unticked, not everything that is no longer
+                            // selected: see HomeViewModel.applyPauses.
+                            resumed = opening - selected,
+                            reason = reason.trim().ifEmpty { null },
+                            reasonEdited = reasonEdited,
+                        ),
+                    )
+                },
+            ) { Text("Done") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

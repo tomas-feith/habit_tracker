@@ -87,6 +87,21 @@ object HabitEvaluator {
             from: LocalDate,
             to: LocalDate,
         ): Boolean = pauses.any { it.overlaps(from, to) }
+
+        /**
+         * True when every day in [from]..[to] is paused.
+         *
+         * Asked of a week rather than of a day, and answered day by day rather than by
+         * looking for one pause that spans the whole range: two pauses meeting in the
+         * middle of a week still leave no day of it live.
+         */
+        fun throughout(
+            from: LocalDate,
+            to: LocalDate,
+        ): Boolean =
+            generateSequence(from) { it.plusDays(1) }
+                .takeWhile { !it.isAfter(to) }
+                .all { day -> pauses.any { it.covers(day) } }
     }
 
     /** Where the home screen's inline strip starts: 4 weeks of days, or 12 weeks. */
@@ -159,10 +174,14 @@ object HabitEvaluator {
                         settleOpen(habit.polarity, total, target, target)
                     }
 
-                    // A paused week is not judged, but a quota genuinely met during it
-                    // still counts.
-                    paused.during(week, lastDay) -> {
+                    // A week paused end to end is not judged, but a quota genuinely met
+                    // during it still counts.
+                    paused.throughout(week, lastDay) -> {
                         pausedStatus(habit.polarity, total, floor = target)
+                    }
+
+                    paused.during(week, lastDay) -> {
+                        partlyPausedStatus(habit.polarity, total, target)
                     }
 
                     // A habit created on a Thursday only had part of that week available, so
@@ -189,7 +208,33 @@ object HabitEvaluator {
     }
 
     /**
-     * How a paused period settles.
+     * How a week settles when only some of its days were paused.
+     *
+     * The all-or-nothing rule this replaces threw the whole week away for a single paused
+     * day, which cost a negative habit a week it had genuinely kept clean - six days of
+     * staying inside the allowance, discarded because the seventh was a holiday. A week
+     * you were mostly present for is a week you can earn.
+     *
+     * The forgiveness runs one way only. A positive habit that fell short is not judged,
+     * because the days it needed were taken away from it. A negative habit that went past
+     * its allowance is a miss like any other: those slips were logged on days the user was
+     * here, and a pause elsewhere in the week does not unlog them.
+     */
+    private fun partlyPausedStatus(
+        polarity: Polarity,
+        count: Int,
+        target: Int,
+    ): PeriodStatus {
+        val settled = settleClosed(polarity, count, floor = target, allowance = target)
+        return when {
+            settled == PeriodStatus.GOOD -> PeriodStatus.GOOD
+            polarity == Polarity.POSITIVE -> PeriodStatus.NOT_SCHEDULED
+            else -> PeriodStatus.MISSED
+        }
+    }
+
+    /**
+     * How a fully paused period settles.
      *
      * Credit is given only for something actually done, never merely for time passing.
      * That asymmetry is deliberate and the reason this is not [settleClosed]: for a

@@ -284,6 +284,32 @@ class HabitDaoTest {
             assertEquals(0, dao.observePausesFor(id).first().size)
         }
 
+    /**
+     * Pausing more habits under a new message must not retitle a break already running.
+     *
+     * The picker has one message field for the whole selection, so without this, pausing
+     * two habits "On vacation" silently rewrote the habit that had been paused for a
+     * fortnight with "Injured leg".
+     */
+    @Test
+    fun anUneditedReasonLeavesARunningPauseAlone() =
+        runBlocking {
+            val a = repository.addHabit(habit("A"))
+            val b = repository.addHabit(habit("B"))
+            repository.pauseHabit(a, day.minusDays(5), "Injured leg")
+
+            repository.setPaused(
+                pause = listOf(a, b),
+                resume = emptyList(),
+                on = day,
+                reason = "On vacation",
+                rewriteReason = false,
+            )
+
+            assertEquals("Injured leg", dao.openPauseFor(a)!!.reason)
+            assertEquals("On vacation", dao.openPauseFor(b)!!.reason)
+        }
+
     @Test
     fun applyingASelectionSkipsHabitsAlreadyPaused() =
         runBlocking {

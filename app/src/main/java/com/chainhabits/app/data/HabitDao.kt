@@ -142,20 +142,23 @@ interface HabitDao {
      * Starts a pause for [habitId] on [from], unless one is already running.
      *
      * Transactional and idempotent: two taps, or a "pause everything" that includes an
-     * already-paused habit, must not leave two overlapping open pauses behind. An
-     * already-running pause keeps its start date and takes the new [reason], so editing the
-     * message on a habit paused since last week says something new about the same stretch
-     * rather than restarting it.
+     * already-paused habit, must not leave two overlapping open pauses behind.
+     *
+     * An already-running pause keeps its start date, and keeps its own [reason] unless
+     * [rewriteReason] says the user has just written a new one. Rewriting unconditionally
+     * meant that pausing two more habits under "On vacation" silently retitled the habit
+     * that had been paused for a fortnight with "Injured leg".
      */
     @Transaction
     suspend fun startPause(
         habitId: Long,
         from: LocalDate,
         reason: String? = null,
+        rewriteReason: Boolean = true,
     ) {
         val open = openPauseFor(habitId)
         if (open != null) {
-            if (open.reason != reason) updatePause(open.copy(reason = reason))
+            if (rewriteReason && open.reason != reason) updatePause(open.copy(reason = reason))
             return
         }
         insertPause(PauseEntity(habitId = habitId, start = from, end = null, reason = reason))
@@ -196,8 +199,9 @@ interface HabitDao {
         resume: Collection<Long>,
         on: LocalDate,
         reason: String? = null,
+        rewriteReason: Boolean = true,
     ) {
-        pause.forEach { startPause(it, on, reason) }
+        pause.forEach { startPause(it, on, reason, rewriteReason) }
         resume.forEach { endPause(it, on) }
     }
 
