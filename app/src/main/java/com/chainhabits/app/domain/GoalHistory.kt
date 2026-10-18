@@ -33,7 +33,7 @@ object GoalHistory {
         if (next == stored.cadence) return stored.pastGoals
         if ((next is Cadence.TimesPerWeek) != stored.isWeekly) return emptyList()
 
-        val lastDay = currentPeriodStart(next, today).minusDays(1)
+        val lastDay = startOfNewGoal(next, today).minusDays(1)
         val before = stored.pastGoals.filter { it.lastDay < lastDay }
         val endingNow = stored.pastGoals.firstOrNull { it.lastDay == lastDay }
 
@@ -51,7 +51,14 @@ object GoalHistory {
         return recorded.dropLastWhile { it.cadence == next }
     }
 
-    private fun currentPeriodStart(
+    /**
+     * The first day a goal of [cadence] set on [today] is judged against: the Monday of this
+     * week for a times-per-week goal, today for a daily one.
+     *
+     * Public so the edit form can name the date before saving rather than saying "this
+     * week", which is ambiguous to anyone editing near midnight on a Sunday.
+     */
+    fun startOfNewGoal(
         cadence: Cadence,
         today: LocalDate,
     ): LocalDate = if (cadence is Cadence.TimesPerWeek) HabitEvaluator.weekStart(today) else today

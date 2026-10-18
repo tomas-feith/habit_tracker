@@ -6,8 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,8 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.chainhabits.app.data.BackupFolder
+import com.chainhabits.app.data.BackupSettings
 import com.chainhabits.app.data.HabitRepository
 import com.chainhabits.app.data.RestoreResult
+import com.chainhabits.app.data.ScheduledBackup
 import com.chainhabits.app.data.backupFileName
 import com.chainhabits.app.notify.Reminders
 import kotlinx.coroutines.CancellationException
@@ -80,7 +85,7 @@ private suspend fun writeText(
  * captured: it is how a scope stops its children, not a failure, and `runCatching` cannot
  * be used because it swallows it.
  */
-private suspend fun <T> catching(block: suspend () -> T): Result<T> =
+internal suspend fun <T> catching(block: suspend () -> T): Result<T> =
     try {
         Result.success(block())
     } catch (e: CancellationException) {
@@ -95,6 +100,9 @@ private suspend fun <T> catching(block: suspend () -> T): Result<T> =
 @Composable
 fun SettingsScreen(
     repository: HabitRepository,
+    backupSettings: BackupSettings,
+    backupFolder: BackupFolder,
+    scheduledBackup: ScheduledBackup,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -188,6 +196,9 @@ fun SettingsScreen(
                         },
                 )
             }
+
+            Spacer(Modifier.height(12.dp))
+            BackupSection(backupSettings, backupFolder, scheduledBackup)
         }
     }
 

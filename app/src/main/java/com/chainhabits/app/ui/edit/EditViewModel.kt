@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chainhabits.app.data.HabitRepository
 import com.chainhabits.app.domain.Cadence
+import com.chainhabits.app.domain.GoalHistory
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 /** A weekly target below one would mean the habit can never be satisfied. */
 const val MIN_WEEKLY_TARGET = 1
@@ -58,8 +60,11 @@ enum class CadenceChoice { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 internal fun goalChangeNotice(
     stored: Habit?,
     next: Cadence,
+    today: LocalDate,
+    dateFormat: DateTimeFormatter,
 ): String? {
     if (stored == null || next == stored.cadence) return null
+    val starts = GoalHistory.startOfNewGoal(next, today).format(dateFormat)
     return when {
         (next is Cadence.TimesPerWeek) != stored.isWeekly -> {
             "Switching between a daily and a weekly goal re-scores your whole history " +
@@ -67,11 +72,13 @@ internal fun goalChangeNotice(
         }
 
         next is Cadence.TimesPerWeek -> {
-            "The new goal starts this week. Past weeks keep the goal they had."
+            "The new goal counts from $starts, the start of this week. Earlier weeks keep " +
+                "the goal they had."
         }
 
         else -> {
-            "The new schedule starts today. Past days keep the schedule they had."
+            "The new schedule counts from today, $starts. Earlier days keep the schedule " +
+                "they had."
         }
     }
 }

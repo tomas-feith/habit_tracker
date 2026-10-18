@@ -11,6 +11,8 @@ import org.junit.Test
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * What the edit form persists.
@@ -108,24 +110,51 @@ class EditStateTest {
 
     // --- Goal change notice ---------------------------------------------------------
 
+    private val wednesday = LocalDate.parse("2026-08-12")
+    private val dateFormat = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK)
+
     @Test
     fun `no notice when creating or when the goal is unchanged`() {
-        assertNull(goalChangeNotice(null, Cadence.TimesPerWeek(3)))
-        assertNull(goalChangeNotice(stored, Cadence.Daily))
+        assertNull(goalChangeNotice(null, Cadence.TimesPerWeek(3), wednesday, dateFormat))
+        assertNull(goalChangeNotice(stored, Cadence.Daily, wednesday, dateFormat))
     }
 
     @Test
-    fun `a changed weekly target is said to start this week`() {
+    fun `a changed weekly target names the Monday it counts from`() {
         val weekly = stored.copy(cadence = Cadence.TimesPerWeek(2))
 
-        val notice = goalChangeNotice(weekly, Cadence.TimesPerWeek(3))
+        val notice = goalChangeNotice(weekly, Cadence.TimesPerWeek(3), wednesday, dateFormat)
 
-        assertEquals("The new goal starts this week. Past weeks keep the goal they had.", notice)
+        assertEquals(
+            "The new goal counts from Monday 10 August, the start of this week. Earlier " +
+                "weeks keep the goal they had.",
+            notice,
+        )
+    }
+
+    @Test
+    fun `a Sunday edit names that week's Monday, not the next one`() {
+        val weekly = stored.copy(cadence = Cadence.TimesPerWeek(2))
+        val sunday = LocalDate.parse("2026-08-16")
+
+        val notice = goalChangeNotice(weekly, Cadence.TimesPerWeek(3), sunday, dateFormat)
+
+        assertTrue(notice.orEmpty().contains("Monday 10 August"))
+    }
+
+    @Test
+    fun `a changed daily schedule names today`() {
+        val days = Cadence.SpecificDays(setOf(DayOfWeek.MONDAY))
+
+        val notice = goalChangeNotice(stored, days, wednesday, dateFormat).orEmpty()
+
+        assertTrue(notice.contains("today, Wednesday 12 August"))
     }
 
     @Test
     fun `switching between daily and weekly warns that history is re-scored`() {
-        val notice = goalChangeNotice(stored, Cadence.TimesPerWeek(3)).orEmpty()
+        val notice =
+            goalChangeNotice(stored, Cadence.TimesPerWeek(3), wednesday, dateFormat).orEmpty()
 
         assertTrue(notice.contains("re-scores your whole history"))
     }

@@ -39,6 +39,9 @@ fun HabitNavHost() {
             val app = LocalContext.current.applicationContext as HabitApplication
             SettingsScreen(
                 repository = app.repository,
+                backupSettings = app.backupSettings,
+                backupFolder = app.backupFolder,
+                scheduledBackup = app.scheduledBackup,
                 onBack = { nav.popBackStack() },
             )
         }

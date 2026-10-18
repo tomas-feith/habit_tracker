@@ -35,6 +35,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -55,6 +57,13 @@ private const val NOTE_COUNTER_THRESHOLD = MAX_NOTE_LENGTH - 40
 
 private val DEFAULT_REMINDER = LocalTime.of(8, 0)
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
+
+/** "Monday 19 October", in the locale Compose is rendering with. */
+@Composable
+private fun noticeDateFormat(): DateTimeFormatter {
+    val locale = Locale.forLanguageTag(ComposeLocale.current.toLanguageTag())
+    return remember(locale) { DateTimeFormatter.ofPattern("EEEE d MMMM", locale) }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +116,16 @@ fun EditScreen(
             NoteField(state, viewModel)
 
             KindField(state, viewModel)
-            CadenceField(state, goalChangeNotice(stored, state.toHabit().cadence), viewModel)
+            // Read the clock on every recomposition rather than remembering it: the notice
+            // names a date, and one cached from when the form opened goes stale at midnight.
+            val notice =
+                goalChangeNotice(
+                    stored,
+                    state.toHabit().cadence,
+                    LocalDate.now(),
+                    noticeDateFormat(),
+                )
+            CadenceField(state, notice, viewModel)
             StrictnessField(state, viewModel)
             // Negative habits get no reminder at all, so the control is not merely
             // disabled - there is nothing to configure.

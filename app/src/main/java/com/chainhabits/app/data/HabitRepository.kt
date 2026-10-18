@@ -244,6 +244,9 @@ class HabitRepository(
 
     // --- backup ---
 
+    /** True once any habit exists, archived ones included. */
+    suspend fun hasHabits(): Boolean = dao.allHabits().isNotEmpty()
+
     /** Everything the app stores, as a transfer file. */
     suspend fun exportBackup(exportedAt: String): String =
         buildBackup(

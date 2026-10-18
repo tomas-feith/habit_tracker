@@ -2,8 +2,11 @@ package com.chainhabits.app
 
 import android.app.Application
 import androidx.glance.appwidget.updateAll
+import com.chainhabits.app.data.BackupFolder
+import com.chainhabits.app.data.BackupSettings
 import com.chainhabits.app.data.HabitDatabase
 import com.chainhabits.app.data.HabitRepository
+import com.chainhabits.app.data.ScheduledBackup
 import com.chainhabits.app.notify.Reminders
 import com.chainhabits.app.widget.HabitWidget
 
@@ -14,6 +17,14 @@ class HabitApplication : Application() {
         HabitRepository(HabitDatabase.get(this).habitDao()) {
             HabitWidget().updateAll(this)
         }
+    }
+
+    val backupSettings: BackupSettings by lazy { BackupSettings(this) }
+
+    val backupFolder: BackupFolder by lazy { BackupFolder(this) }
+
+    val scheduledBackup: ScheduledBackup by lazy {
+        ScheduledBackup(repository, backupSettings, backupFolder)
     }
 
     override fun onCreate() {
