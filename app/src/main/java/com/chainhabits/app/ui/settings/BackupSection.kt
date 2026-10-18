@@ -88,7 +88,13 @@ fun BackupSection(
                     }.isSuccess
 
                 if (taken) {
+                    // Released only once the new grant is held and saved, so a failure
+                    // part way leaves the old folder still working rather than neither.
+                    val previous = folder
                     settings.setFolder(tree.toString())
+                    if (previous != null && previous != tree.toString()) {
+                        folders.release(previous.toUri())
+                    }
                     BackupWorker.schedule(context)
                     // A first backup straight away, so the folder is proven to work while
                     // the user is still looking rather than tomorrow when nobody is.
@@ -137,6 +143,7 @@ fun BackupSection(
             onClick = {
                 scope.launch {
                     BackupWorker.cancel(context)
+                    folder?.let { folders.release(it.toUri()) }
                     settings.clearFolder()
                     failed = false
                     message = "Scheduled backups turned off. Existing files are left alone."

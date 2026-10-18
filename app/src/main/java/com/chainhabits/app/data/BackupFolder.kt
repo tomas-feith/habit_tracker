@@ -2,6 +2,7 @@ package com.chainhabits.app.data
 
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +109,25 @@ class BackupFolder(
                     }
             }.getOrNull()
         }
+
+    /**
+     * Give back the grant on a folder this app no longer writes to.
+     *
+     * Android caps how many persisted grants one app may hold, and a grant nobody releases
+     * outlives every reason for it: without this, each folder ever chosen stays granted for
+     * the life of the install, until a re-pick some years on fails for no visible reason.
+     *
+     * Never throws. A grant that is already gone - revoked by the provider, or never taken
+     * - is exactly the state this is trying to reach.
+     */
+    fun release(tree: Uri) {
+        runCatching {
+            context.contentResolver.releasePersistableUriPermission(
+                tree,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+    }
 
     private fun prune(
         resolver: ContentResolver,
