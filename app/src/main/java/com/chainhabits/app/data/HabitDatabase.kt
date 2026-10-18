@@ -70,8 +70,44 @@ private val MIGRATION_3_4 =
         }
     }
 
+/**
+ * Adds the `past_goals` table.
+ *
+ * Purely additive, like [MIGRATION_1_2]. Every existing habit starts with no past goals,
+ * which judges its whole history against its current goal - exactly what it did before
+ * the table existed, so the upgrade changes no outcome the user has already seen.
+ */
+private val MIGRATION_4_5 =
+    object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `past_goals` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `habitId` INTEGER NOT NULL,
+                    `lastDay` INTEGER NOT NULL,
+                    `cadenceType` TEXT NOT NULL,
+                    `cadenceDays` INTEGER NOT NULL,
+                    `cadenceTarget` INTEGER NOT NULL,
+                    FOREIGN KEY(`habitId`) REFERENCES `habits`(`id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_past_goals_habitId_lastDay` " +
+                    "ON `past_goals` (`habitId`, `lastDay`)",
+            )
+        }
+    }
+
 @Database(
-    entities = [HabitEntity::class, EntryEntity::class, PauseEntity::class],
+    entities = [
+        HabitEntity::class,
+        EntryEntity::class,
+        PauseEntity::class,
+        PastGoalEntity::class,
+    ],
     version = HabitDatabase.VERSION,
     exportSchema = true,
 )
@@ -80,7 +116,7 @@ abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
 
     companion object {
-        const val VERSION = 4
+        const val VERSION = 5
 
         const val NAME = "habits.db"
 
@@ -100,7 +136,8 @@ abstract class HabitDatabase : RoomDatabase() {
          * The exported schema JSONs under `app/schemas` are committed for exactly this
          * reason: they are what the migration test diffs against.
          */
-        val MIGRATIONS: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        val MIGRATIONS: List<Migration> =
+            listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         @Volatile
         private var instance: HabitDatabase? = null

@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Habit
+import com.chainhabits.app.domain.PastGoal
 import com.chainhabits.app.domain.Polarity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -408,5 +409,83 @@ class HabitDaoTest {
             assertEquals(RestoreResult.Failure::class.java, result::class.java)
             assertNotNull(repository.getHabit(old.id))
             assertEquals(1, dao.getEntry(old.id, day)?.count)
+        }
+
+    // --- goal history ---
+
+    @Test
+    fun raisingAWeeklyGoalKeepsTheOldOneForPastWeeks() =
+        runBlocking {
+            val stored =
+                repository.getHabit(
+                    repository.addHabit(habit(cadence = Cadence.TimesPerWeek(2))),
+                )!!
+
+            repository.updateHabit(stored.copy(cadence = Cadence.TimesPerWeek(3)), day)
+
+            val reloaded = repository.getHabit(stored.id)!!
+            assertEquals(Cadence.TimesPerWeek(3), reloaded.cadence)
+            // `day` is a Sunday, so the old goal covers everything up to last Sunday.
+            assertEquals(
+                listOf(PastGoal(Cadence.TimesPerWeek(2), day.minusDays(7))),
+                reloaded.pastGoals,
+            )
+            assertEquals(reloaded.pastGoals, repository.observeHabit(stored.id).first()!!.pastGoals)
+            assertEquals(
+                reloaded.pastGoals,
+                repository
+                    .observeHabits()
+                    .first()
+                    .single()
+                    .pastGoals,
+            )
+        }
+
+    @Test
+    fun theFormCannotRewriteGoalHistory() =
+        runBlocking {
+            val stored =
+                repository.getHabit(
+                    repository.addHabit(habit(cadence = Cadence.TimesPerWeek(2))),
+                )!!
+            repository.updateHabit(stored.copy(cadence = Cadence.TimesPerWeek(3)), day)
+
+            // A rename built from a form carries no past goals; the stored ones must survive.
+            repository.updateHabit(
+                stored.copy(name = "Run", cadence = Cadence.TimesPerWeek(3)),
+                day,
+            )
+
+            assertEquals(1, repository.getHabit(stored.id)!!.pastGoals.size)
+        }
+
+    @Test
+    fun deletingAHabitDeletesItsGoalHistory() =
+        runBlocking {
+            val stored =
+                repository.getHabit(
+                    repository.addHabit(habit(cadence = Cadence.TimesPerWeek(2))),
+                )!!
+            repository.updateHabit(stored.copy(cadence = Cadence.TimesPerWeek(3)), day)
+
+            repository.deleteHabit(stored)
+
+            assertEquals(emptyList<PastGoalEntity>(), dao.allPastGoals())
+        }
+
+    @Test
+    fun goalHistorySurvivesABackupRoundTrip() =
+        runBlocking {
+            val stored =
+                repository.getHabit(
+                    repository.addHabit(habit(cadence = Cadence.TimesPerWeek(2))),
+                )!!
+            repository.updateHabit(stored.copy(cadence = Cadence.TimesPerWeek(3)), day)
+            val before = repository.getHabit(stored.id)!!.pastGoals
+
+            val result = repository.restoreBackup(repository.exportBackup("2026-08-16T00:00:00Z"))
+
+            assertEquals(RestoreResult.Success::class.java, result::class.java)
+            assertEquals(before, repository.getHabit(stored.id)!!.pastGoals)
         }
 }

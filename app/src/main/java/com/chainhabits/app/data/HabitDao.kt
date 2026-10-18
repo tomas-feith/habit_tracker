@@ -47,6 +47,38 @@ interface HabitDao {
     @Update
     suspend fun updateHabit(habit: HabitEntity)
 
+    @Query("SELECT * FROM past_goals ORDER BY habitId, lastDay")
+    fun observeAllPastGoals(): Flow<List<PastGoalEntity>>
+
+    @Query("SELECT * FROM past_goals WHERE habitId = :habitId ORDER BY lastDay")
+    fun observePastGoalsFor(habitId: Long): Flow<List<PastGoalEntity>>
+
+    @Query("SELECT * FROM past_goals WHERE habitId = :habitId ORDER BY lastDay")
+    suspend fun pastGoalsFor(habitId: Long): List<PastGoalEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertPastGoal(goal: PastGoalEntity): Long
+
+    @Query("DELETE FROM past_goals WHERE habitId = :habitId")
+    suspend fun deletePastGoalsFor(habitId: Long)
+
+    /**
+     * Saves an edited habit together with the goal history that edit produced.
+     *
+     * One transaction: the habit's new goal and the record of its old one only make sense
+     * together, and an observer that saw the first without the second would briefly re-judge
+     * the whole history against the new goal - the very flash of misses this prevents.
+     */
+    @Transaction
+    suspend fun updateHabitWithGoals(
+        habit: HabitEntity,
+        pastGoals: List<PastGoalEntity>,
+    ) {
+        updateHabit(habit)
+        deletePastGoalsFor(habit.id)
+        pastGoals.forEach { insertPastGoal(it) }
+    }
+
     @Delete
     suspend fun deleteHabit(habit: HabitEntity)
 
@@ -91,6 +123,9 @@ interface HabitDao {
     @Query("SELECT * FROM pauses ORDER BY habitId, start")
     suspend fun allPauses(): List<PauseEntity>
 
+    @Query("SELECT * FROM past_goals ORDER BY habitId, lastDay")
+    suspend fun allPastGoals(): List<PastGoalEntity>
+
     @Query("DELETE FROM habits")
     suspend fun deleteAllHabits()
 
@@ -99,18 +134,20 @@ interface HabitDao {
      *
      * One transaction, so a failure part way cannot leave half a history behind: either the
      * whole file lands or the previous contents are still there. Deleting the habits
-     * cascades to entries and pauses, so no orphan rows survive.
+     * cascades to entries, pauses and past goals, so no orphan rows survive.
      */
     @Transaction
     suspend fun replaceAll(
         habits: List<HabitEntity>,
         entries: List<EntryEntity>,
         pauses: List<PauseEntity>,
+        pastGoals: List<PastGoalEntity>,
     ) {
         deleteAllHabits()
         habits.forEach { insertHabit(it) }
         entries.forEach { upsertEntry(it) }
         pauses.forEach { insertPause(it) }
+        pastGoals.forEach { insertPastGoal(it) }
     }
 
     @Query("SELECT * FROM pauses ORDER BY start")

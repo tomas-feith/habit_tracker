@@ -48,6 +48,35 @@ internal fun String.takeChars(max: Int): String {
 enum class CadenceChoice { DAILY, SPECIFIC_DAYS, TIMES_PER_WEEK }
 
 /**
+ * What saving would do to the habit's history, when the goal on the form differs from
+ * [stored]'s. Null when creating, or when the goal is unchanged.
+ *
+ * Said before saving rather than after, because the cross-granularity case re-scores the
+ * whole history and the user should get to back out of that. The rule itself lives in
+ * [com.chainhabits.app.domain.GoalHistory]; this only describes it.
+ */
+internal fun goalChangeNotice(
+    stored: Habit?,
+    next: Cadence,
+): String? {
+    if (stored == null || next == stored.cadence) return null
+    return when {
+        (next is Cadence.TimesPerWeek) != stored.isWeekly -> {
+            "Switching between a daily and a weekly goal re-scores your whole history " +
+                "against the new one."
+        }
+
+        next is Cadence.TimesPerWeek -> {
+            "The new goal starts this week. Past weeks keep the goal they had."
+        }
+
+        else -> {
+            "The new schedule starts today. Past days keep the schedule they had."
+        }
+    }
+}
+
+/**
  * Keys for the in-progress form held in [SavedStateHandle].
  *
  * Stored as primitives rather than one serialized blob: `SavedStateHandle` is backed by a
@@ -184,12 +213,25 @@ class EditViewModel(
 
     val isNew: Boolean get() = habitId <= 0
 
+    private val _stored = MutableStateFlow<Habit?>(null)
+
+    /**
+     * The habit as it sits in the database, for comparing the form against - see
+     * [goalChangeNotice]. Loaded even when a draft is restored, since the draft is exactly
+     * the case where the form may already differ from it.
+     */
+    val stored: StateFlow<Habit?> = _stored.asStateFlow()
+
     init {
-        // Only load from the database when there is no draft to restore - otherwise
-        // returning to a half-edited habit would silently discard the edits.
-        if (!isNew && !handle.hasDraft()) {
+        // Only fill the form from the database when there is no draft to restore -
+        // otherwise returning to a half-edited habit would silently discard the edits.
+        val restoredDraft = handle.hasDraft()
+        if (!isNew) {
             viewModelScope.launch {
-                repository.getHabit(habitId)?.let { h ->
+                val habit = repository.getHabit(habitId)
+                _stored.value = habit
+                if (restoredDraft) return@launch
+                habit?.let { h ->
                     edit {
                         EditUiState(
                             id = h.id,
@@ -264,7 +306,7 @@ class EditViewModel(
                     habit.copy(id = repository.addHabit(habit))
                 } else {
                     val habit = _state.value.toHabitPreserving(repository.getHabit(habitId))
-                    repository.updateHabit(habit)
+                    repository.updateHabit(habit, LocalDate.now())
                     habit
                 }
 

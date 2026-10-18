@@ -7,6 +7,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Habit
+import com.chainhabits.app.domain.PastGoal
 import com.chainhabits.app.domain.Pause
 import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
@@ -90,25 +91,86 @@ data class PauseEntity(
     val reason: String? = null,
 )
 
+/**
+ * A goal a habit used to have, in force through [lastDay]. See [PastGoal].
+ *
+ * The cadence columns mirror [HabitEntity]'s. Unique per (habit, [lastDay]): two goals
+ * ending on the same day would leave one of them in force for no day at all.
+ */
+@Entity(
+    tableName = "past_goals",
+    foreignKeys = [
+        ForeignKey(
+            entity = HabitEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["habitId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["habitId", "lastDay"], unique = true)],
+)
+data class PastGoalEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val habitId: Long,
+    val lastDay: LocalDate,
+    val cadenceType: CadenceType,
+    val cadenceDays: Int,
+    val cadenceTarget: Int,
+)
+
+fun PastGoalEntity.toDomain(): PastGoal =
+    PastGoal(cadence = cadenceOf(cadenceType, cadenceDays, cadenceTarget), lastDay = lastDay)
+
+fun PastGoal.toEntity(habitId: Long): PastGoalEntity =
+    PastGoalEntity(
+        habitId = habitId,
+        lastDay = lastDay,
+        cadenceType = cadence.type(),
+        cadenceDays = cadence.daysColumn(),
+        cadenceTarget = cadence.targetColumn(),
+    )
+
+private fun cadenceOf(
+    type: CadenceType,
+    days: Int,
+    target: Int,
+): Cadence =
+    when (type) {
+        CadenceType.DAILY -> Cadence.Daily
+        CadenceType.SPECIFIC_DAYS -> Cadence.SpecificDays(days.toDaySet())
+        CadenceType.TIMES_PER_WEEK -> Cadence.TimesPerWeek(target)
+    }
+
+private fun Cadence.type(): CadenceType =
+    when (this) {
+        is Cadence.Daily -> CadenceType.DAILY
+        is Cadence.SpecificDays -> CadenceType.SPECIFIC_DAYS
+        is Cadence.TimesPerWeek -> CadenceType.TIMES_PER_WEEK
+    }
+
+private fun Cadence.daysColumn(): Int = (this as? Cadence.SpecificDays)?.days?.toBitmask() ?: 0
+
+private fun Cadence.targetColumn(): Int = (this as? Cadence.TimesPerWeek)?.target ?: 1
+
 fun PauseEntity.toDomain(): Pause =
     Pause(id = id, habitId = habitId, start = start, end = end, reason = reason)
 
 fun Pause.toEntity(): PauseEntity =
     PauseEntity(id = id, habitId = habitId, start = start, end = end, reason = reason)
 
-fun HabitEntity.toDomain(): Habit =
+/**
+ * [pastGoals] has no default on purpose: a habit loaded without its history would judge
+ * every past period against today's goal, which is the exact bug the history exists to
+ * prevent, and it would do so silently.
+ */
+fun HabitEntity.toDomain(pastGoals: List<PastGoalEntity>): Habit =
     Habit(
         id = id,
         name = name,
         note = note,
         polarity = polarity,
         strictness = strictness,
-        cadence =
-            when (cadenceType) {
-                CadenceType.DAILY -> Cadence.Daily
-                CadenceType.SPECIFIC_DAYS -> Cadence.SpecificDays(cadenceDays.toDaySet())
-                CadenceType.TIMES_PER_WEEK -> Cadence.TimesPerWeek(cadenceTarget)
-            },
+        cadence = cadenceOf(cadenceType, cadenceDays, cadenceTarget),
         reminderTime =
             reminderMinuteOfDay?.let {
                 LocalTime.of(it / MINUTES_PER_HOUR, it % MINUTES_PER_HOUR)
@@ -116,6 +178,7 @@ fun HabitEntity.toDomain(): Habit =
         createdOn = createdOn,
         archivedOn = archivedOn,
         sortOrder = sortOrder,
+        pastGoals = pastGoals.sortedBy { it.lastDay }.map { it.toDomain() },
     )
 
 fun Habit.toEntity(): HabitEntity =
@@ -126,14 +189,9 @@ fun Habit.toEntity(): HabitEntity =
         note = note?.trim()?.ifEmpty { null },
         polarity = polarity,
         strictness = strictness,
-        cadenceType =
-            when (cadence) {
-                is Cadence.Daily -> CadenceType.DAILY
-                is Cadence.SpecificDays -> CadenceType.SPECIFIC_DAYS
-                is Cadence.TimesPerWeek -> CadenceType.TIMES_PER_WEEK
-            },
-        cadenceDays = (cadence as? Cadence.SpecificDays)?.days?.toBitmask() ?: 0,
-        cadenceTarget = (cadence as? Cadence.TimesPerWeek)?.target ?: 1,
+        cadenceType = cadence.type(),
+        cadenceDays = cadence.daysColumn(),
+        cadenceTarget = cadence.targetColumn(),
         reminderMinuteOfDay = reminderTime?.let { it.hour * MINUTES_PER_HOUR + it.minute },
         createdOn = createdOn,
         archivedOn = archivedOn,

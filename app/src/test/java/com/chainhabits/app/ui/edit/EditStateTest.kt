@@ -6,6 +6,7 @@ import com.chainhabits.app.domain.Polarity
 import com.chainhabits.app.domain.Strictness
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -103,5 +104,29 @@ class EditStateTest {
                 .copy(cadenceChoice = CadenceChoice.SPECIFIC_DAYS, days = days)
                 .toHabitPreserving(stored)
         assertEquals(Cadence.SpecificDays(days), edited.cadence)
+    }
+
+    // --- Goal change notice ---------------------------------------------------------
+
+    @Test
+    fun `no notice when creating or when the goal is unchanged`() {
+        assertNull(goalChangeNotice(null, Cadence.TimesPerWeek(3)))
+        assertNull(goalChangeNotice(stored, Cadence.Daily))
+    }
+
+    @Test
+    fun `a changed weekly target is said to start this week`() {
+        val weekly = stored.copy(cadence = Cadence.TimesPerWeek(2))
+
+        val notice = goalChangeNotice(weekly, Cadence.TimesPerWeek(3))
+
+        assertEquals("The new goal starts this week. Past weeks keep the goal they had.", notice)
+    }
+
+    @Test
+    fun `switching between daily and weekly warns that history is re-scored`() {
+        val notice = goalChangeNotice(stored, Cadence.TimesPerWeek(3)).orEmpty()
+
+        assertTrue(notice.contains("re-scores your whole history"))
     }
 }

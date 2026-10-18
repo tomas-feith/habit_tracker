@@ -69,13 +69,42 @@ data class Habit(
     val createdOn: LocalDate,
     val archivedOn: LocalDate? = null,
     val sortOrder: Int = 0,
+    /**
+     * Goals this habit had before [cadence], oldest first. See [PastGoal].
+     *
+     * Not a column on the habit: it is loaded alongside it, and written only by
+     * [GoalHistory.afterEdit] when the goal changes.
+     */
+    val pastGoals: List<PastGoal> = emptyList(),
 ) {
     val isWeekly: Boolean get() = cadence is Cadence.TimesPerWeek
+
+    /**
+     * The goal [date] is judged against: whichever past goal was in force then, or the
+     * current one for anything after the last of them.
+     */
+    fun cadenceOn(date: LocalDate): Cadence =
+        pastGoals.firstOrNull { !date.isAfter(it.lastDay) }?.cadence ?: cadence
 
     /** Weekly habits with a target of 1 show a plain check, not a one-pip progress row. */
     val showsQuotaPips: Boolean
         get() = (cadence as? Cadence.TimesPerWeek)?.let { it.target > 1 } ?: false
 }
+
+/**
+ * A goal a habit used to have, in force through [lastDay] inclusive.
+ *
+ * Kept as history for the same reason pauses are: raising "2x a week" to "3x a week" is a
+ * decision about the future, and re-judging every past week against the new number would
+ * turn weeks that met the goal of the time into misses and break chains that never broke.
+ *
+ * Each past goal starts the day after the previous one's [lastDay] (or when the habit was
+ * created), so a list of them sorted by [lastDay] is the whole story.
+ */
+data class PastGoal(
+    val cadence: Cadence,
+    val lastDay: LocalDate,
+)
 
 /**
  * One logged event on a date.

@@ -20,9 +20,10 @@ const val BACKUP_VERSION = 1
  * backup is opportunistic: it runs on Google's schedule, cannot be triggered, and cannot be
  * verified. The one time it was needed it restored the history incompletely.
  *
- * Habits, entries and pauses are the whole of the stored state. Streaks, chain lengths and
- * the mosaic are all derived by [com.chainhabits.app.domain.HabitEvaluator] at read time,
- * so storing them would be storing a cached answer that could disagree with its inputs.
+ * Habits, entries, pauses and past goals are the whole of the stored state. Streaks, chain
+ * lengths and the mosaic are all derived by [com.chainhabits.app.domain.HabitEvaluator] at
+ * read time, so storing them would be storing a cached answer that could disagree with its
+ * inputs.
  *
  * Entities are serialised rather than domain types: they are the storage truth, they map to
  * columns one to one, and a restore has to reproduce rows rather than reconstruct meaning.
@@ -51,6 +52,12 @@ private data class BackupEnvelope(
     val habits: List<HabitPayload> = emptyList(),
     val entries: List<EntryPayload> = emptyList(),
     val pauses: List<PausePayload> = emptyList(),
+    /**
+     * Absent from files written before goals had a history, which restore as habits that
+     * always had their current goal - what those builds showed anyway. Additive, so it
+     * needs no version bump: an older reader skips it as an unknown key.
+     */
+    val pastGoals: List<PastGoalPayload> = emptyList(),
 )
 
 @Serializable
@@ -85,12 +92,22 @@ private data class PausePayload(
     val reason: String? = null,
 )
 
+@Serializable
+private data class PastGoalPayload(
+    val habitId: Long,
+    val lastDay: String,
+    val cadenceType: String,
+    val cadenceDays: Int = 0,
+    val cadenceTarget: Int = 1,
+)
+
 /** The outcome of reading a backup file. */
 sealed interface RestoreResult {
     data class Success(
         val habits: List<HabitEntity>,
         val entries: List<EntryEntity>,
         val pauses: List<PauseEntity>,
+        val pastGoals: List<PastGoalEntity>,
     ) : RestoreResult
 
     /** [reason] is written to be shown to the user as-is. */
@@ -104,6 +121,7 @@ fun buildBackup(
     entries: List<EntryEntity>,
     pauses: List<PauseEntity>,
     exportedAt: String,
+    pastGoals: List<PastGoalEntity> = emptyList(),
 ): String =
     backupJson.encodeToString(
         BackupEnvelope(
@@ -120,6 +138,16 @@ fun buildBackup(
                         it.start.toString(),
                         it.end?.toString(),
                         it.reason,
+                    )
+                },
+            pastGoals =
+                pastGoals.map {
+                    PastGoalPayload(
+                        it.habitId,
+                        it.lastDay.toString(),
+                        it.cadenceType.name,
+                        it.cadenceDays,
+                        it.cadenceTarget,
                     )
                 },
         ),
@@ -189,9 +217,28 @@ fun parseBackup(text: String): RestoreResult {
         }.getOrNull()
             ?: return RestoreResult.Failure("That backup has a pause this version cannot read.")
 
-    validate(habits, entries, pauses)?.let { return it }
+    // Ids are not carried: nothing refers to a past goal, so the database can number them.
+    val pastGoals =
+        runCatching {
+            payload.pastGoals
+                .filter { it.habitId in ids }
+                .map {
+                    PastGoalEntity(
+                        habitId = it.habitId,
+                        lastDay = LocalDate.parse(it.lastDay),
+                        cadenceType = CadenceType.valueOf(it.cadenceType),
+                        cadenceDays = it.cadenceDays,
+                        cadenceTarget = it.cadenceTarget,
+                    )
+                }
+        }.getOrNull()
+            ?: return RestoreResult.Failure(
+                "That backup has a past goal this version cannot read.",
+            )
 
-    return RestoreResult.Success(habits, entries, pauses)
+    validate(habits, entries, pauses, pastGoals)?.let { return it }
+
+    return RestoreResult.Success(habits, entries, pauses, pastGoals)
 }
 
 /**
@@ -210,6 +257,7 @@ private fun validate(
     habits: List<HabitEntity>,
     entries: List<EntryEntity>,
     pauses: List<PauseEntity>,
+    pastGoals: List<PastGoalEntity>,
 ): RestoreResult.Failure? {
     firstDuplicate(habits.map { it.id })?.let {
         return RestoreResult.Failure(
@@ -226,6 +274,14 @@ private fun validate(
         return RestoreResult.Failure(
             "That backup logs $date twice for the same habit, with no way to tell which " +
                 "count is right.",
+        )
+    }
+
+    // The table is unique on this pair, so a duplicate would throw out of the restore.
+    firstDuplicate(pastGoals.map { it.habitId to it.lastDay })?.let { (_, day) ->
+        return RestoreResult.Failure(
+            "That backup ends two goals on $day for the same habit, with no way to tell " +
+                "which one was in force.",
         )
     }
 

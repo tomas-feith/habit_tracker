@@ -2,6 +2,7 @@ package com.chainhabits.app.data
 
 import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Entry
+import com.chainhabits.app.domain.GoalHistory
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.Pause
 import kotlinx.coroutines.flow.Flow
@@ -21,10 +22,21 @@ class HabitRepository(
      */
     private val onDataChanged: suspend () -> Unit = {},
 ) {
+    /**
+     * Every habit is loaded with its past goals, wherever it is loaded from. A habit read
+     * without them would judge all of its history against today's goal - see
+     * [com.chainhabits.app.domain.PastGoal].
+     */
     fun observeHabits(): Flow<List<Habit>> =
-        dao.observeActiveHabits().map { list -> list.map { it.toDomain() } }
+        combine(dao.observeActiveHabits(), dao.observeAllPastGoals()) { habits, goals ->
+            val goalsByHabit = goals.groupBy { it.habitId }
+            habits.map { it.toDomain(goalsByHabit[it.id].orEmpty()) }
+        }
 
-    fun observeHabit(id: Long): Flow<Habit?> = dao.observeHabit(id).map { it?.toDomain() }
+    fun observeHabit(id: Long): Flow<Habit?> =
+        combine(dao.observeHabit(id), dao.observePastGoalsFor(id)) { habit, goals ->
+            habit?.toDomain(goals)
+        }
 
     fun observeEntriesFor(habitId: Long): Flow<List<Entry>> =
         dao.observeEntriesFor(habitId).map { list ->
@@ -80,8 +92,22 @@ class HabitRepository(
         return dao.insertHabit(entity).also { onDataChanged() }
     }
 
-    suspend fun updateHabit(habit: Habit) {
-        dao.updateHabit(habit.toEntity())
+    /**
+     * Saves an edit to [habit], made on [today].
+     *
+     * A changed goal applies from the current period onward; the old one is recorded so the
+     * periods already settled keep being judged against it. [GoalHistory] decides exactly
+     * what is kept, and [habit]'s own [Habit.pastGoals] is ignored in favour of the stored
+     * ones - a form has no business rewriting history.
+     */
+    suspend fun updateHabit(
+        habit: Habit,
+        today: LocalDate,
+    ) {
+        val stored = getHabit(habit.id)
+        val pastGoals =
+            stored?.let { GoalHistory.afterEdit(it, habit.cadence, today) }.orEmpty()
+        dao.updateHabitWithGoals(habit.toEntity(), pastGoals.map { it.toEntity(habit.id) })
         onDataChanged()
     }
 
@@ -197,7 +223,7 @@ class HabitRepository(
         onDataChanged()
     }
 
-    suspend fun getHabit(id: Long): Habit? = dao.getHabit(id)?.toDomain()
+    suspend fun getHabit(id: Long): Habit? = dao.getHabit(id)?.toDomain(dao.pastGoalsFor(id))
 
     /**
      * One habit's entries from [from] onward, as a snapshot.
@@ -213,13 +239,20 @@ class HabitRepository(
 
     suspend fun pausesFor(habitId: Long): List<Pause> = dao.pausesFor(habitId).map { it.toDomain() }
 
-    suspend fun habitsWithReminders(): List<Habit> = dao.habitsWithReminders().map { it.toDomain() }
+    suspend fun habitsWithReminders(): List<Habit> =
+        dao.habitsWithReminders().map { it.toDomain(dao.pastGoalsFor(it.id)) }
 
     // --- backup ---
 
     /** Everything the app stores, as a transfer file. */
     suspend fun exportBackup(exportedAt: String): String =
-        buildBackup(dao.allHabits(), dao.allEntries(), dao.allPauses(), exportedAt)
+        buildBackup(
+            dao.allHabits(),
+            dao.allEntries(),
+            dao.allPauses(),
+            exportedAt,
+            pastGoals = dao.allPastGoals(),
+        )
 
     /**
      * Replace everything from a backup file.
@@ -232,7 +265,7 @@ class HabitRepository(
     suspend fun restoreBackup(text: String): RestoreResult {
         val result = parseBackup(text)
         if (result is RestoreResult.Success) {
-            dao.replaceAll(result.habits, result.entries, result.pauses)
+            dao.replaceAll(result.habits, result.entries, result.pauses, result.pastGoals)
             onDataChanged()
         }
         return result

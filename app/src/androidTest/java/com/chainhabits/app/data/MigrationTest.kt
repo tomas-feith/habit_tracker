@@ -51,6 +51,7 @@ class MigrationTest {
             assertTrue("habits table missing", db.hasTable("habits"))
             assertTrue("entries table missing", db.hasTable("entries"))
             assertTrue("pauses table missing", db.hasTable("pauses"))
+            assertTrue("past_goals table missing", db.hasTable("past_goals"))
         }
     }
 
@@ -179,6 +180,60 @@ class MigrationTest {
                 assertEquals(20010, cursor.getInt(0))
                 assertEquals(20020, cursor.getInt(1))
                 assertTrue("an existing pause must migrate to no reason", cursor.isNull(2))
+            }
+        }
+    }
+
+    /**
+     * Adding `past_goals` must leave every habit, entry and pause intact, with no history.
+     *
+     * No past goals is the right starting point, not merely a safe one: it judges every
+     * habit against its current goal, which is what the app showed before the upgrade.
+     */
+    @Test
+    @Throws(IOException::class)
+    fun migrate4To5AddsAnEmptyGoalHistory() {
+        helper.createDatabase(TEST_DB, 4).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO habits
+                    (id, name, note, polarity, strictness, cadenceType, cadenceDays,
+                     cadenceTarget, reminder_minute_of_day, createdOn, archivedOn, sortOrder)
+                VALUES (1, 'Gym', NULL, 'POSITIVE', 'STANDARD', 'TIMES_PER_WEEK', 0, 2, NULL,
+                        20000, NULL, 0)
+                """.trimIndent(),
+            )
+            db.execSQL("INSERT INTO entries (habitId, date, count) VALUES (1, 20001, 2)")
+            db.execSQL(
+                "INSERT INTO pauses (id, habitId, `start`, `end`, reason) " +
+                    "VALUES (1, 1, 20010, 20020, 'On vacation')",
+            )
+        }
+
+        val db =
+            helper.runMigrationsAndValidate(
+                TEST_DB,
+                5,
+                true,
+                *HabitDatabase.MIGRATIONS.toTypedArray(),
+            )
+
+        db.use {
+            it.query("SELECT cadenceTarget FROM habits WHERE id = 1").use { cursor ->
+                assertTrue("habit row lost in migration", cursor.moveToFirst())
+                assertEquals(2, cursor.getInt(0))
+            }
+            it.query("SELECT count FROM entries WHERE habitId = 1").use { cursor ->
+                assertTrue("entry row lost in migration", cursor.moveToFirst())
+                assertEquals(2, cursor.getInt(0))
+            }
+            it.query("SELECT reason FROM pauses WHERE id = 1").use { cursor ->
+                assertTrue("pause row lost in migration", cursor.moveToFirst())
+                assertEquals("On vacation", cursor.getString(0))
+            }
+            it.query("SELECT COUNT(*) FROM past_goals").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("existing habits must start with no past goals", 0, cursor.getInt(0))
             }
         }
     }

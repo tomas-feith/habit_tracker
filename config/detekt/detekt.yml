@@ -24,7 +24,7 @@ complexity:
     # (logEvent, startPause) are exactly the places where one table's writes need to be
     # consistent, and those read best next to the queries they wrap. The count grows by one
     # per query, so this ceiling tracks the schema rather than any complexity.
-    allowedFunctionsPerInterface: 32
+    allowedFunctionsPerInterface: 39
     ignorePrivate: true
   LongMethod:
     # Compose screen functions are declarative trees, not dense logic.

@@ -86,15 +86,59 @@ class BackupTest {
             PauseEntity(2, 2, LocalDate.parse("2026-08-10"), null),
         )
 
+    private val pastGoals =
+        listOf(
+            // "No McDonald's" used to allow three a week, then one, before settling on two.
+            PastGoalEntity(
+                habitId = 3,
+                lastDay = LocalDate.parse("2026-03-01"),
+                cadenceType = CadenceType.TIMES_PER_WEEK,
+                cadenceDays = 0,
+                cadenceTarget = 3,
+            ),
+            PastGoalEntity(
+                habitId = 3,
+                lastDay = LocalDate.parse("2026-05-03"),
+                cadenceType = CadenceType.TIMES_PER_WEEK,
+                cadenceDays = 0,
+                cadenceTarget = 1,
+            ),
+        )
+
     private fun roundTrip(): RestoreResult.Success =
-        parseBackup(buildBackup(habits, entries, pauses, exportedAt)) as RestoreResult.Success
+        parseBackup(buildBackup(habits, entries, pauses, exportedAt, pastGoals))
+            as RestoreResult.Success
 
     @Test
-    fun `round trips every habit, entry and pause`() {
+    fun `round trips every habit, entry, pause and past goal`() {
         val restored = roundTrip()
         assertEquals(habits, restored.habits)
         assertEquals(entries, restored.entries)
         assertEquals(pauses, restored.pauses)
+        assertEquals(pastGoals, restored.pastGoals)
+    }
+
+    @Test
+    fun `a backup from before goal history restores with none`() {
+        val old =
+            buildBackup(habits, entries, pauses, exportedAt).replace(
+                Regex(""",\s*"pastGoals":\s*\[\s*]"""),
+                "",
+            )
+        assertTrue("fixture must really lack the field", "pastGoals" !in old)
+
+        val restored = parseBackup(old) as RestoreResult.Success
+
+        assertEquals(emptyList<PastGoalEntity>(), restored.pastGoals)
+    }
+
+    @Test
+    fun `two goals ending on the same day for one habit are refused`() {
+        val clash = pastGoals + pastGoals.first().copy(cadenceTarget = 5)
+
+        val result = parseBackup(buildBackup(habits, entries, pauses, exportedAt, clash))
+
+        assertTrue(result is RestoreResult.Failure)
     }
 
     @Test

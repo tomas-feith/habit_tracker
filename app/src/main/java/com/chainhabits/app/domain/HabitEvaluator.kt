@@ -166,7 +166,11 @@ object HabitEvaluator {
             val lastDay = week.plusDays((DAYS_PER_WEEK - 1).toLong())
             val total =
                 (0 until DAYS_PER_WEEK).sumOf { counts[week.plusDays(it.toLong())] ?: 0 }
-            val target = cadence.target
+            // The goal this week actually had, not today's: raising the bar must not fail
+            // weeks that cleared the old one. Past goals are only ever kept while the habit
+            // stays weekly, so the fallback is a guard rather than a case.
+            val target =
+                (habit.cadenceOn(week) as? Cadence.TimesPerWeek)?.target ?: cadence.target
 
             val status =
                 when {
@@ -338,7 +342,7 @@ object HabitEvaluator {
 
     /**
      * Whether [habit] is due on [date] at all - false before it existed, after it was
-     * archived, or on a weekday its cadence skips.
+     * archived, or on a weekday the cadence in force on [date] skips.
      *
      * Public because [Backfill] has to ask the same question: anything this returns false
      * for is a day the evaluator will ignore no matter what is written against it.
@@ -349,7 +353,7 @@ object HabitEvaluator {
     ): Boolean {
         if (date < habit.createdOn) return false
         habit.archivedOn?.let { if (date >= it) return false }
-        return when (val c = habit.cadence) {
+        return when (val c = habit.cadenceOn(date)) {
             is Cadence.Daily -> true
             is Cadence.SpecificDays -> date.dayOfWeek in c.days
             is Cadence.TimesPerWeek -> true

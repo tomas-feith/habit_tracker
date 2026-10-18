@@ -63,6 +63,7 @@ fun EditScreen(
     onDone: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val stored by viewModel.stored.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(state.saved) { if (state.saved) onDone() }
@@ -106,7 +107,7 @@ fun EditScreen(
             NoteField(state, viewModel)
 
             KindField(state, viewModel)
-            CadenceField(state, viewModel)
+            CadenceField(state, goalChangeNotice(stored, state.toHabit().cadence), viewModel)
             StrictnessField(state, viewModel)
             // Negative habits get no reminder at all, so the control is not merely
             // disabled - there is nothing to configure.
@@ -190,6 +191,7 @@ private fun KindField(
 @Composable
 private fun CadenceField(
     state: EditUiState,
+    notice: String?,
     viewModel: EditViewModel,
 ) {
     Field(title = "How often", help = cadenceHelp(state)) {
@@ -224,6 +226,15 @@ private fun CadenceField(
 
             // Daily habits need no extra control.
             CadenceChoice.DAILY -> {}
+        }
+
+        notice?.let {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
