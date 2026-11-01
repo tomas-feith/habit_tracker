@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
@@ -68,10 +69,8 @@ object Reminders {
      * A one-shot alarm re-armed after each firing, rather than one repeating alarm set once:
      *
      *  - `setInexactRepeating` at `INTERVAL_DAY` hands the system an alignment window hours
-     *    wide, so a 07:00 reminder genuinely arrives at 09:40. `setAndAllowWhileIdle` is
-     *    delivered close to its trigger and is not held back for the next Doze maintenance
-     *    window. It is still not an *exact* alarm, so it needs no `SCHEDULE_EXACT_ALARM`
-     *    permission.
+     *    wide, so a 07:00 reminder genuinely arrives at 09:40. See [arm] for why the
+     *    one-shot is exact as well.
      *  - A repeating alarm advances by a fixed 24 hours, which DST and travel make wrong
      *    permanently. Re-deriving the trigger from the wall clock each time fixes both.
      *
@@ -124,6 +123,16 @@ object Reminders {
             }
     }
 
+    /**
+     * Exact, not merely allowed while idle. `setAndAllowWhileIdle` was assumed to fire close
+     * to its trigger, but it is inexact: `dumpsys alarm` on the S23 showed a 21:00 reminder
+     * with `window=+1h`, free to arrive at 21:59 - and one that lands after the habit was
+     * logged is suppressed by [ReminderDecision], so a late nudge reads as a missing one.
+     *
+     * Falls back to the inexact call when exact alarms are not allowed, which only happens
+     * on API 31-32 after the user revokes SCHEDULE_EXACT_ALARM (see the manifest). The
+     * midnight rebuild in [RescheduleReceiver] picks exact back up once it is granted.
+     */
     private fun arm(
         context: Context,
         habitId: Long,
@@ -131,14 +140,22 @@ object Reminders {
     ) {
         val zone = ZoneId.systemDefault()
         val next = ReminderDecision.nextTriggerAfter(LocalDateTime.now(zone), time)
+        val triggerAt = next.atZone(zone).toInstant().toEpochMilli()
+        val alarms = context.getSystemService(AlarmManager::class.java)
 
-        context
-            .getSystemService(AlarmManager::class.java)
-            .setAndAllowWhileIdle(
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms()) {
+            alarms.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
-                next.atZone(zone).toInstant().toEpochMilli(),
+                triggerAt,
                 pendingIntent(context, habitId),
             )
+        } else {
+            alarms.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAt,
+                pendingIntent(context, habitId),
+            )
+        }
     }
 
     fun cancel(

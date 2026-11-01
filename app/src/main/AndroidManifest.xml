@@ -3,6 +3,17 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+        Exact alarms, so a reminder lands at the minute it was set for. An inexact one was
+        given an hour-wide window on the S23 and could arrive after the habit was already
+        logged, which suppresses it. USE_EXACT_ALARM (33+) is granted at install and cannot
+        be revoked; it is the permission meant for reminder apps. On 31-32 only
+        SCHEDULE_EXACT_ALARM exists, which the user can revoke, so the code still checks.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
 
     <application
         android:name=".HabitApplication"
