@@ -490,10 +490,11 @@ class HabitEvaluatorTest {
 
     @Test
     fun `a positive habit short of its quota in a partly paused week is not judged`() {
-        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val h = habit(cadence = Cadence.TimesPerWeek(5))
         val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
         val done = entries(weekStart.plusDays(5))
 
+        // 5x with 3 live days asks for 2, and only one was logged.
         val cells = timelineOf(h, done, pause(weekStart, weekStart.plusDays(3))).cells
 
         assertEquals(
@@ -501,6 +502,102 @@ class HabitEvaluatorTest {
             CellState.NOT_SCHEDULED,
             cells.first { it.date == weekStart }.state,
         )
+    }
+
+    @Test
+    fun `reaching the scaled goal earns a partly paused week`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(5))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val done = entries(weekStart.plusDays(5), weekStart.plusDays(6))
+
+        val cells = timelineOf(h, done, pause(weekStart, weekStart.plusDays(3))).cells
+
+        assertEquals(CellState.DONE, cells.first { it.date == weekStart }.state)
+    }
+
+    @Test
+    fun `the scaled goal rounds down`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val weekStart = HabitEvaluator.weekStart(today)
+
+        // 3 x 5 / 7 is 2.14; 3 x 6 / 7 is 2.57.
+        val fiveLive = pause(weekStart, weekStart.plusDays(1))
+        val sixLive = pause(weekStart, weekStart)
+
+        assertEquals(2, HabitEvaluator.weekGoal(h, today, fiveLive)?.count)
+        assertEquals(2, HabitEvaluator.weekGoal(h, today, sixLive)?.count)
+    }
+
+    @Test
+    fun `a goal that rounds to nothing still takes one log to earn`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val pauses = pause(weekStart, weekStart.plusDays(4))
+
+        val state = { done: List<Entry> ->
+            timelineOf(h, done, pauses).cells.first { it.date == weekStart }.state
+        }
+
+        assertEquals(1, HabitEvaluator.weekGoal(h, weekStart, pauses)?.count)
+        assertEquals("time passing earns nothing", CellState.NOT_SCHEDULED, state(emptyList()))
+        assertEquals(CellState.DONE, state(entries(weekStart.plusDays(5))))
+    }
+
+    @Test
+    fun `a week without a pause keeps its whole goal and can still be missed`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val goal = HabitEvaluator.weekGoal(h, today, emptyList())
+
+        assertEquals(WeekGoal(3, shortfallForgiven = false), goal)
+    }
+
+    @Test
+    fun `the current week is settled against the scaled goal`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val weekStart = HabitEvaluator.weekStart(today)
+        val timeline = timelineOf(h, entries(today), pause(weekStart, weekStart.plusDays(1)))
+
+        assertEquals(CellState.PENDING, timeline.current?.state)
+        assertEquals(2, timeline.currentGoal?.count)
+        assertTrue(timeline.currentGoal?.shortfallForgiven == true)
+    }
+
+    @Test
+    fun `resuming hands back the days a running pause had claimed`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(7))
+        val weekStart = HabitEvaluator.weekStart(today)
+
+        val running = pause(weekStart.plusDays(1), null)
+        val ended = pause(weekStart.plusDays(1), today.minusDays(1))
+
+        assertEquals(1, HabitEvaluator.weekGoal(h, today, running)?.count)
+        assertEquals(6, HabitEvaluator.weekGoal(h, today, ended)?.count)
+    }
+
+    @Test
+    fun `a negative habit keeps its whole allowance in a partly paused week`() {
+        val h = habit(polarity = Polarity.NEGATIVE, cadence = Cadence.TimesPerWeek(3))
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val pauses = pause(weekStart, weekStart.plusDays(4))
+        val slips = entries(weekStart.plusDays(5), weekStart.plusDays(6))
+
+        assertEquals(3, HabitEvaluator.weekGoal(h, weekStart, pauses)?.count)
+        assertEquals(
+            CellState.DONE,
+            timelineOf(h, slips, pauses).cells.first { it.date == weekStart }.state,
+        )
+    }
+
+    @Test
+    fun `a past goal is what gets scaled, not today's`() {
+        val weekStart = HabitEvaluator.weekStart(today).minusWeeks(1)
+        val h =
+            habit(cadence = Cadence.TimesPerWeek(7)).copy(
+                pastGoals = listOf(PastGoal(Cadence.TimesPerWeek(2), weekStart.plusDays(6))),
+            )
+        val pauses = pause(weekStart, weekStart.plusDays(1))
+
+        assertEquals(1, HabitEvaluator.weekGoal(h, weekStart, pauses)?.count)
     }
 
     @Test

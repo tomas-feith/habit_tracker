@@ -42,6 +42,17 @@ class ReminderDecisionTest {
         pauses: List<Pause> = emptyList(),
     ) = ReminderDecision.shouldNotify(h, entries, pauses, today)
 
+    @Test
+    fun `a week cut short by a pause stops nagging once the scaled goal is met`() {
+        val h = habit(cadence = Cadence.TimesPerWeek(3))
+        val monday = HabitEvaluator.weekStart(today)
+        // Monday and Tuesday away leaves 5 live days, so 3x scales down to 2.
+        val away = listOf(Pause(habitId = 1, start = monday, end = monday.plusDays(1)))
+
+        assertTrue(shouldNotify(h, entries(today to 1), away))
+        assertFalse(shouldNotify(h, entries(today to 2), away))
+    }
+
     // --- the nudge is owed ---
 
     @Test

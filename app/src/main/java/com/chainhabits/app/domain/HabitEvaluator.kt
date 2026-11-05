@@ -69,7 +69,59 @@ object HabitEvaluator {
             // Pauses need no special handling here: an unlogged day already renders as
             // unscheduled, and a workout you did manage on holiday still deserves its mark.
             dayCells = if (habit.isWeekly) dayLevelCells(habit, counts, today) else cells,
+            currentGoal = weekGoal(habit, today, pauses),
         )
+    }
+
+    /** What the week containing [date] asks of [habit]. Null unless the habit is weekly. */
+    fun weekGoal(
+        habit: Habit,
+        date: LocalDate,
+        pauses: List<Pause>,
+    ): WeekGoal? {
+        val cadence = habit.cadence as? Cadence.TimesPerWeek ?: return null
+        val week = weekStart(date)
+        val paused = Paused(pauses)
+        return WeekGoal(
+            count = scaledGoal(habit.polarity, targetIn(habit, cadence, week), week, paused),
+            shortfallForgiven =
+                paused.during(week, week.plusDays((DAYS_PER_WEEK - 1).toLong())),
+        )
+    }
+
+    /**
+     * The goal this week actually had, not today's: raising the bar must not fail weeks that
+     * cleared the old one. Past goals are only ever kept while the habit stays weekly, so the
+     * fallback is a guard rather than a case.
+     */
+    private fun targetIn(
+        habit: Habit,
+        cadence: Cadence.TimesPerWeek,
+        week: LocalDate,
+    ): Int = (habit.cadenceOn(week) as? Cadence.TimesPerWeek)?.target ?: cadence.target
+
+    /**
+     * What a week's paused days leave of a positive habit's quota: the target in proportion
+     * to the days still live, rounded down.
+     *
+     * Never below one, even where the arithmetic says zero (3x a week with 2 live days),
+     * because a goal of nothing would be met by doing nothing, and a pause grants no credit
+     * for time passing. A negative habit keeps its whole allowance: scaling it would turn a
+     * slip made on a day the user was here into a miss because of a day they were not. A
+     * week paused end to end has no live days to scale to, so it keeps the full quota.
+     */
+    private fun scaledGoal(
+        polarity: Polarity,
+        target: Int,
+        week: LocalDate,
+        paused: Paused,
+    ): Int {
+        val liveDays = paused.liveDaysIn(week)
+        return if (polarity == Polarity.NEGATIVE || liveDays == 0) {
+            target
+        } else {
+            (target * liveDays / DAYS_PER_WEEK).coerceAtLeast(1)
+        }
     }
 
     /**
@@ -102,6 +154,10 @@ object HabitEvaluator {
             generateSequence(from) { it.plusDays(1) }
                 .takeWhile { !it.isAfter(to) }
                 .all { day -> pauses.any { it.covers(day) } }
+
+        /** How many days of the week starting on [week] are not paused. */
+        fun liveDaysIn(week: LocalDate): Int =
+            (0 until DAYS_PER_WEEK).count { !on(week.plusDays(it.toLong())) }
     }
 
     /** Where the home screen's inline strip starts: 4 weeks of days, or 12 weeks. */
@@ -166,16 +222,13 @@ object HabitEvaluator {
             val lastDay = week.plusDays((DAYS_PER_WEEK - 1).toLong())
             val total =
                 (0 until DAYS_PER_WEEK).sumOf { counts[week.plusDays(it.toLong())] ?: 0 }
-            // The goal this week actually had, not today's: raising the bar must not fail
-            // weeks that cleared the old one. Past goals are only ever kept while the habit
-            // stays weekly, so the fallback is a guard rather than a case.
-            val target =
-                (habit.cadenceOn(week) as? Cadence.TimesPerWeek)?.target ?: cadence.target
+            val target = targetIn(habit, cadence, week)
+            val goal = scaledGoal(habit.polarity, target, week, paused)
 
             val status =
                 when {
                     week == currentWeek -> {
-                        settleOpen(habit.polarity, total, target, target)
+                        settleOpen(habit.polarity, total, goal, target)
                     }
 
                     // A week paused end to end is not judged, but a quota genuinely met
@@ -185,7 +238,7 @@ object HabitEvaluator {
                     }
 
                     paused.during(week, lastDay) -> {
-                        partlyPausedStatus(habit.polarity, total, target)
+                        partlyPausedStatus(habit.polarity, total, goal, target)
                     }
 
                     // A habit created on a Thursday only had part of that week available, so
@@ -219,17 +272,19 @@ object HabitEvaluator {
      * staying inside the allowance, discarded because the seventh was a holiday. A week
      * you were mostly present for is a week you can earn.
      *
-     * The forgiveness runs one way only. A positive habit that fell short is not judged,
-     * because the days it needed were taken away from it. A negative habit that went past
-     * its allowance is a miss like any other: those slips were logged on days the user was
-     * here, and a pause elsewhere in the week does not unlog them.
+     * The forgiveness runs one way only. A positive habit earns the week by reaching its
+     * scaled [goal], and one that fell short is not judged, because the days it needed were
+     * taken away from it. A negative habit that went past its [allowance] is a miss like any
+     * other: those slips were logged on days the user was here, and a pause elsewhere in the
+     * week does not unlog them.
      */
     private fun partlyPausedStatus(
         polarity: Polarity,
         count: Int,
-        target: Int,
+        goal: Int,
+        allowance: Int,
     ): PeriodStatus {
-        val settled = settleClosed(polarity, count, floor = target, allowance = target)
+        val settled = settleClosed(polarity, count, floor = goal, allowance = allowance)
         return when {
             settled == PeriodStatus.GOOD -> PeriodStatus.GOOD
             polarity == Polarity.POSITIVE -> PeriodStatus.NOT_SCHEDULED

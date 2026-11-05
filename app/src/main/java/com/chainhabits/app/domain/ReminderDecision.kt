@@ -38,13 +38,15 @@ object ReminderDecision {
     ): Boolean {
         if (!isEligible(habit, pauses, today)) return false
 
-        return when (val cadence = habit.cadence) {
-            // The week is the unit, so the quota is what closes it - a fourth workout in a
-            // 3x week is welcome but not owed, and nagging for it turns a met goal into an
-            // unmet one.
-            is Cadence.TimesPerWeek -> weekTotal(entries, today) < cadence.target
-
-            else -> countOn(entries, today) == 0
+        // The week is the unit, so the quota is what closes it - a fourth workout in a 3x week
+        // is welcome but not owed, and nagging for it turns a met goal into an unmet one. The
+        // quota is the one left after any pause, or a week cut short would nag for days that
+        // are gone.
+        val goal = HabitEvaluator.weekGoal(habit, today, pauses)
+        return if (goal != null) {
+            weekTotal(entries, today) < goal.count
+        } else {
+            countOn(entries, today) == 0
         }
     }
 

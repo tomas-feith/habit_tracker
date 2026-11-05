@@ -7,7 +7,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.chainhabits.app.HabitApplication
 import com.chainhabits.app.data.HabitRepository
-import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.Cell
 import com.chainhabits.app.domain.Habit
 import com.chainhabits.app.domain.HabitEvaluator
@@ -32,13 +31,13 @@ data class HabitRowState(
     val stats: HabitStats,
     /** Events logged in the current period - "2 of 3 this week", or today's count. */
     val currentCount: Int,
+    /** This week's quota with its paused days taken out, or null for a daily habit. */
+    val weeklyTarget: Int? = null,
     /** True while a pause is running: the habit is suspended, not merely undone. */
     val isPaused: Boolean = false,
     /** Why it is paused, in the user's words. Null when not paused, or when unsaid. */
     val pauseReason: String? = null,
 ) {
-    val weeklyTarget: Int? get() = (habit.cadence as? Cadence.TimesPerWeek)?.target
-
     /** Whether the habit's bar for the current period is already met. */
     val isSatisfied: Boolean
         get() = weeklyTarget?.let { currentCount >= it } ?: (currentCount > 0)
@@ -157,6 +156,7 @@ class HomeViewModel(
                     cells = timeline.since(HabitEvaluator.inlineWindowStart(habit, day)),
                     stats = timeline.stats,
                     currentCount = timeline.currentCount,
+                    weeklyTarget = timeline.currentGoal?.count,
                     isPaused = pauses.any { it.isOpenEnded },
                     pauseReason = pauses.firstOrNull { it.isOpenEnded }?.reason,
                 )

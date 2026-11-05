@@ -91,6 +91,12 @@ Two asymmetries are deliberate:
   a success, so applying the ordinary rule would hand out a spotless streak for every day of
   a pause. A pause suspends a habit; it does not perform it.
 
+A weekly habit paused for part of a week has its goal scaled to the days left: the target times
+the live days over seven, rounded down, and never below one. A 5x habit with 3 live days asks
+for 2, and that is the number the home screen, widget and reminders all show. Reaching it earns
+the week; falling short is not a miss, so the week renders as a dash. A negative habit keeps its
+whole allowance, and a week paused end to end keeps its full quota.
+
 Pauses are stored as a history of `(habit, start, end)` rather than two columns on the habit.
 Clearing them when a pause ended would retroactively turn those days back into misses and
 could break a chain that was never actually broken — last summer's holiday has to keep

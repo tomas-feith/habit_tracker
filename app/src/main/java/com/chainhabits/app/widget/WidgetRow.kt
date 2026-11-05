@@ -1,7 +1,6 @@
 package com.chainhabits.app.widget
 
 import com.chainhabits.app.data.HabitRepository
-import com.chainhabits.app.domain.Cadence
 import com.chainhabits.app.domain.CellState
 import com.chainhabits.app.domain.Entry
 import com.chainhabits.app.domain.Habit
@@ -28,7 +27,7 @@ data class WidgetRow(
     val state: CellState,
     /** Events logged in the current period. */
     val count: Int,
-    /** The weekly quota, or null for a daily habit. */
+    /** This week's quota with its paused days taken out, or null for a daily habit. */
     val target: Int?,
     /** The number the row leads with - chain for standard habits, streak for strict. */
     val headline: Int,
@@ -151,7 +150,7 @@ private fun Habit.toWidgetRow(
         name = name,
         state = timeline.current?.state ?: CellState.PENDING,
         count = timeline.currentCount,
-        target = (cadence as? Cadence.TimesPerWeek)?.target,
+        target = timeline.currentGoal?.count,
         headline = stats.headlineFor(this),
         isWeekly = isWeekly,
         polarity = polarity,

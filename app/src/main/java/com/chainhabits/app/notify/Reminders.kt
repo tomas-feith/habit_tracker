@@ -300,7 +300,12 @@ class ReminderReceiver : BroadcastReceiver() {
                     Reminders.notify(
                         context,
                         habit,
-                        ReminderCopy.forHabit(habit, timeline.stats, timeline.currentCount),
+                        ReminderCopy.forHabit(
+                            habit,
+                            timeline.stats,
+                            timeline.currentCount,
+                            timeline.currentGoal,
+                        ),
                     )
                 }
             } finally {

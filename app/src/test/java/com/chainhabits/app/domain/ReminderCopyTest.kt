@@ -139,6 +139,37 @@ class ReminderCopyTest {
         assertEquals("Not done this week yet. 2 weeks so far.", text)
     }
 
+    @Test
+    fun `a week with a pause quotes the scaled goal`() {
+        val copy =
+            ReminderCopy.forHabit(
+                habit(cadence = Cadence.TimesPerWeek(5)),
+                stats(currentStreak = 4, chainLength = 4, longestStreak = 9),
+                currentCount = 1,
+                weekGoal = WeekGoal(2, shortfallForgiven = true),
+            )
+        assertEquals("1 of 2 this week, 1 to go. 4 weeks so far.", copy.body)
+    }
+
+    @Test
+    fun `a week with a pause threatens nothing, because falling short is not a miss`() {
+        val goal = WeekGoal(2, shortfallForgiven = true)
+        val weekly = Cadence.TimesPerWeek(5)
+        val atRisk = stats(currentStreak = 0, chainLength = 6, atRisk = true)
+        val strict = stats(currentStreak = 6, longestStreak = 9)
+
+        assertEquals(
+            "0 of 2 this week, 2 to go. 6 weeks so far.",
+            ReminderCopy.forHabit(habit(cadence = weekly), atRisk, 0, goal).body,
+        )
+        assertEquals(
+            "0 of 2 this week, 2 to go. 6 weeks so far.",
+            ReminderCopy
+                .forHabit(habit(Strictness.STRICT, weekly), strict, 0, goal)
+                .body,
+        )
+    }
+
     /**
      * The number in the reminder has to be the number on the screen behind it. Both come
      * from [headlineFor] now, and this is what keeps them there.

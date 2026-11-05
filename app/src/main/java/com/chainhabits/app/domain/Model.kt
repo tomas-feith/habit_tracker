@@ -157,6 +157,19 @@ data class Pause(
     ): Boolean = !start.isAfter(to) && (end == null || !end.isBefore(from))
 }
 
+/**
+ * What one week asks of a weekly habit, once its paused days are taken out.
+ *
+ * Produced by [HabitEvaluator.weekGoal], so the mosaic, the "2 of 3" and the reminder cannot
+ * disagree about the number.
+ */
+data class WeekGoal(
+    /** A positive habit's floor, scaled to the days left; a negative habit's full allowance. */
+    val count: Int,
+    /** True when a positive habit falling short of [count] would not be a miss. */
+    val shortfallForgiven: Boolean,
+)
+
 /** Whether a single settled period met its bar. */
 enum class PeriodStatus {
     GOOD,

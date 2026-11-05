@@ -19,6 +19,8 @@ class Timeline internal constructor(
     val cells: List<Cell>,
     /** Day-level cells. The same list as [cells] unless the habit is times-per-week. */
     val dayCells: List<Cell>,
+    /** What the current week asks, with its paused days taken out. Null unless weekly. */
+    val currentGoal: WeekGoal?,
 ) {
     /** The current period: today, or the current week for a times-per-week habit. */
     val current: Cell? get() = cells.lastOrNull()

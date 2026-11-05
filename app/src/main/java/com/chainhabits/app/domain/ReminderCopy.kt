@@ -37,18 +37,28 @@ object ReminderCopy {
      *
      * Only positive habits ever reach here - see [ReminderDecision.shouldNotify] - so there
      * is no wording for a negative habit's nudge.
+     *
+     * [weekGoal] is what the current week asks once paused days are out, for a weekly habit;
+     * without one the week is taken to have no pause in it.
      */
     fun forHabit(
         habit: Habit,
         stats: HabitStats,
         currentCount: Int,
+        weekGoal: WeekGoal? = null,
     ): Text =
         Text(
             title = habit.name,
             body =
                 when (val cadence = habit.cadence) {
-                    is Cadence.TimesPerWeek -> weeklyBody(habit, stats, currentCount, cadence)
-                    else -> dailyBody(habit, stats)
+                    is Cadence.TimesPerWeek -> {
+                        val goal = weekGoal ?: WeekGoal(cadence.target, shortfallForgiven = false)
+                        weeklyBody(habit, stats, currentCount, goal)
+                    }
+
+                    else -> {
+                        dailyBody(habit, stats)
+                    }
                 },
         )
 
@@ -90,30 +100,31 @@ object ReminderCopy {
      *
      * What is actually at stake before Sunday is the week's target, and "1 of 3 this week"
      * is both the more urgent fact and the more actionable one. The streak clause follows
-     * only when there is a streak worth naming.
+     * only when there is a streak worth naming. A week with a pause in it cannot be a miss,
+     * so it gets neither of the threats.
      */
     private fun weeklyBody(
         habit: Habit,
         stats: HabitStats,
         currentCount: Int,
-        cadence: Cadence.TimesPerWeek,
+        goal: WeekGoal,
     ): String {
         val n = stats.headlineFor(habit)
-        val remaining = (cadence.target - currentCount).coerceAtLeast(1)
+        val remaining = (goal.count - currentCount).coerceAtLeast(1)
         val quota =
-            if (cadence.target > 1) {
-                "$currentCount of ${cadence.target} this week, $remaining to go."
+            if (goal.count > 1) {
+                "$currentCount of ${goal.count} this week, $remaining to go."
             } else {
                 "Not done this week yet."
             }
 
         val stake =
             when {
-                stats.atRisk -> {
+                stats.atRisk && !goal.shortfallForgiven -> {
                     "Fall short again and ${weeks(n)} goes with it."
                 }
 
-                habit.strictness == Strictness.STRICT && n > 0 -> {
+                habit.strictness == Strictness.STRICT && n > 0 && !goal.shortfallForgiven -> {
                     "${weeks(n)} clean, and one short week starts the count again."
                 }
 
